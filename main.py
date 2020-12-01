@@ -12,25 +12,27 @@ Cas 1D sans bruit pour SFW
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = True
+__deboggage__ = True
 
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate
 import scipy
+# from mpl_toolkits.mplot3d import Axes3D
 # import cvxpy as cp
 # from sklearn import linear_model
 
 
 # np.random.seed(0)
-N_ech = 100
+N_ech = 100 # Taux d'échantillonnage'
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
 
-sigma = 1e-1
-lambda_regul = 1e-3
-niveaubruits = 1e-2
+sigma = 1e-1 # écart-type de la PSF
+lambda_regul = 1e-3 # Param de relaxation
+niveaubruits = 1e-2 # sigma du bruit
 
 
 def gaussienne(domain):
@@ -88,48 +90,32 @@ class Mesure:
     def torus(self, current_fig=False, subplot=False):
         if subplot == True:
             ax = fig.add_subplot(224, projection='3d')
-            theta = np.linspace(0, 2 * np.pi, N_ech)
-            y_torus = np.sin(theta)
-            x_torus = np.cos(theta)
-            
-            a_x_torus = np.sin(2*np.pi*np.array(self.x))
-            a_y_torus = np.cos(2*np.pi*np.array(self.x))
-            a_z_torus = self.a
-            
-            ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
-            ax.plot(a_x_torus,a_y_torus, a_z_torus, 'o', label='$m_{a,x}$', color='orange')
-            for i in range(self.N):
-                ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
-                        (0,a_z_torus[i]), '--r', color='orange')
-            ax.set_xlabel('$X$')
-            ax.set_ylabel('$Y$')
-            ax.set_zlabel('$Amplitude$')
-            ax.set_title('Mesure sur $\mathbb{S}_1$', fontsize=20)
-            ax.legend()
-            return 
         else:
             current_fig = plt.figure()
             ax = current_fig.add_subplot(111, projection='3d')
-            theta = np.linspace(0, 2 * np.pi, N_ech)
-            y_torus = np.sin(theta)
-            x_torus = np.cos(theta)
-            
-            a_x_torus = np.sin(2*np.pi*np.array(self.x))
-            a_y_torus = np.cos(2*np.pi*np.array(self.x))
-            a_z_torus = self.a
-            
-            ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
-            ax.plot(a_x_torus,a_y_torus, a_z_torus, 'o', label='$m_{a,x}$', color='orange')
-            for i in range(self.N):
-                ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
-                        (0,a_z_torus[i]), '--r', color='orange')
-            return 
-            
-        
+        theta = np.linspace(0, 2*np.pi, N_ech)
+        y_torus = np.sin(theta)
+        x_torus = np.cos(theta)
+
+        a_x_torus = np.sin(2*np.pi*np.array(self.x))
+        a_y_torus = np.cos(2*np.pi*np.array(self.x))
+        a_z_torus = self.a
+
         # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
+        ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
+        ax.plot(a_x_torus,a_y_torus, a_z_torus,
+                'o', label='$m_{a,x}$', color='orange')
+
+        for i in range(self.N):
+            ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
+                    (0,a_z_torus[i]), '--r', color='orange')
+
+        ax.set_xlabel('$X$')
+        ax.set_ylabel('$Y$')
+        ax.set_zlabel('$Amplitude$')
+        ax.set_title('Mesure sur $\mathbb{S}_1$', fontsize=20)
         ax.legend()
-        
-        plt.show()
+        return 
 
 
     def kernel(self, X, noyau='gaussien'):
@@ -178,10 +164,10 @@ class Mesure:
         return m
 
 
-# def mesureAleatoire(N):
-#     x = np.round(np.random.rand(1,N), 2)
-#     a = np.round(np.random.rand(1,N), 2)
-#     return Mesure(a, x)
+def mesureAleatoire(N):
+    x = (np.round(np.random.rand(1,N), 2)).tolist()[0]
+    a = (np.round(np.random.rand(1,N), 2)).tolist()[0]
+    return Mesure(a, x)
 
 # m = Mesure([1,1.1,0,1.5],[2,88,3,8])
 # print(m.prune())
@@ -189,33 +175,7 @@ class Mesure:
 def phi(m, domain):
     return m.kernel(domain)
 
-
-def phi_vecteur(a, x, shape=0):
-    '''shape est un entier indiquant le taille à viser avec le 
-        padding'''
-    acquis = 0
-    # HIERHER il faut débuguer, quand c'est un seul élément ça merde
-    # if len(a) != len(x):
-    #     print('a = ' + str(a))
-    #     print('x = ' + str(x))
-    #     raise ValueError('Pas le même nombre de Dirac')
-    acquis = a*gaussienne(x)
-    if shape > 0:
-        if shape % 2 == 0:
-            if len(a) % 2 == 0:
-                shape_a = int((shape - len(a))/2)
-                observ = np.pad(acquis, (shape_a, shape_a), 'constant')
-            else:
-                shape_a = int((shape - len(a))/2)
-                observ = np.pad(acquis, (shape_a+1, shape_a), 'constant')
-        else:
-            raise ValueError('Choisis mieux ton échantillonnage')
-        return observ
-    else:
-        return acquis
-
-
-def phi_vecteur_2(a, x, domain):
+def phi_vecteur(a, x, domain):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
     m_tmp = Mesure(a, x)
@@ -324,7 +284,7 @@ def SFW(y, regul=1e-5, nIter=5):
         eta_V_k = etak(mesure_k, y, regul)
         x_star_index = np.argmax(np.abs(eta_V_k))
         x_star = x_star_index/N_ech
-        print('* x^* = ' + str(x_star) + ' max à ' + str(np.round(eta_V_k[x_star_index], 2)))
+        print(f'* x^* = {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
         
         # Condition d'arrêt (attention x_star est un indice)
         if np.abs(eta_V_k[x_star_index]) < 1:
@@ -333,10 +293,10 @@ def SFW(y, regul=1e-5, nIter=5):
         else:
             mesure_k_demi = Mesure([],[])
             x_k_demi = x_k + [x_star]
-            
+
             # On résout LASSO (étape 7)
             def lasso(a):
-                attache = 0.5*np.linalg.norm(y - phi_vecteur_2(a,x_k_demi,len(y)))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y)))
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
             # lasso = lambda a : 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y))) + regul*np.linalg.norm(a, 1)
@@ -347,12 +307,12 @@ def SFW(y, regul=1e-5, nIter=5):
             print('* Mesure_k_demi : ' +  str(mesure_k_demi))
             # lasso.fit(phi_vecteur()) 
             # mesure_k_demi += Mesure([a_k_demi],[mesure_k[i]])
-            
+
             # On résout double LASSO (étape 8)
             def lasso_double(params):
                 a = params[:int(len(params)/2)]
                 x = params[int(len(params)/2):]
-                attache = 0.5*np.linalg.norm(y - phi_vecteur_2(a,x,len(y)))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x,len(y)))
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
 
@@ -375,6 +335,7 @@ def SFW(y, regul=1e-5, nIter=5):
             nrj_vecteur[k] = 0.5*np.linalg.norm(y - mesure_k.kernel(X)) + regul*mesure_k.tv()
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             
+    print("\n\n---- Fin de la boucle ----")
     return(mesure_k, nrj_vecteur)
 
 
@@ -383,34 +344,35 @@ lambda_regul = 5e-4
 print(m_sfw)
 certificat_V = etak(m_sfw, y, lambda_regul)
 
+
 if m_sfw != 0:
     # plt.figure(figsize=(21,4))
     fig = plt.figure(figsize=(15,12))
     plt.subplot(221)
-    plt.plot(X,y, label='$y_0$')
+    plt.plot(X,y, label='$y$', linewidth=1.7)
     plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
               markerfmt='C1o', use_line_collection=True, basefmt=" ")
     plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
               markerfmt='C2o', use_line_collection=True, basefmt=" ")
     # plt.xlabel('$x$', fontsize=18)
     plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
-    plt.title('$m_{a,x}$ contre la mesure VT', fontsize=20)
+    plt.title('$m_{a,x}$ contre la VT $m_{a_0,x_0}$', fontsize=20)
     plt.grid()
     plt.legend()
     
     plt.subplot(222)
-    plt.plot(X, certificat_V,'r')
-    plt.axhline(y=1, color='gray', linestyle='--')
-    plt.axhline(y=-1, color='gray', linestyle='--')
+    plt.plot(X, certificat_V, 'r', linewidth=2)
+    plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
+    plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
     # plt.xlabel('$x$', fontsize=18)
     plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
-    plt.title('Certificat $\eta$ mesure finale', fontsize=20)
+    plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
     plt.grid()
     
     plt.subplot(223)
-    plt.plot(nrj_sfw, 'o--')
+    plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
     plt.xlabel('Itération', fontsize=18)
-    plt.ylabel('$\mathcal{J}_\lambda$(m)', fontsize=20)
+    plt.ylabel('$T_\lambda$(m)', fontsize=20)
     plt.title('Décroissance énergie', fontsize=20)
     plt.grid()
     
@@ -420,21 +382,3 @@ if m_sfw != 0:
         plt.savefig('fig/dirac-certificat.pdf', format='pdf', dpi=1000,
         bbox_inches='tight', pad_inches=0.03)
 
-#%%
-
-
-
-# #%%
-# N=10
-# M=100
-
-# U = np.random.random((M,N))
-# m = np.random.random(M)
-# t = cp.Variable(M)
-# x = cp.Variable(N)
-
-# prob = cp.Problem(cp.Minimize(cp.sum(t)), [-t<=U@x-m, U@x-m<=t])
-# optimal_value = prob.solve()
-# print("t=",t.value)
-# print("x=",x.value)
-# print("val=",optimal_value)
