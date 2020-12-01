@@ -3,37 +3,44 @@
 """
 Created on Wed Nov 18 11:32:17 2020
 
-@author: Bastien (https://github.com/XeBasTeX)
+@author: Bastien Laville (https://github.com/XeBasTeX)
 
 Cas 1D sans bruit pour SFW
 """
 
 
 __author__ = 'Bastien'
+__team__ = 'Morpheme'
+__saveFig__ = True
 
 
 import numpy as np
-import cvxpy as cp
 import matplotlib.pyplot as plt
 from scipy import integrate
 import scipy
+# import cvxpy as cp
 # from sklearn import linear_model
 
 
-np.random.seed(2)
+# np.random.seed(0)
 N_ech = 100
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
 
 sigma = 1e-1
-regul = 1e-5
-niveaubruits = 1e-5
+lambda_regul = 1e-3
+niveaubruits = 1e-2
 
 
-def gaussienne(X):
+def gaussienne(domain):
     '''Gaussienne centrée en 0'''
-    return np.sqrt(2*np.pi*sigma**2)*np.exp(-np.power(X,2)/(2*sigma**2))
+    return np.sqrt(2*np.pi*sigma**2)*np.exp(-np.power(domain,2)/(2*sigma**2))
+
+
+def double_gaussienne(domain):
+    '''Gaussienne au carré centrée en 0'''
+    return np.power(gaussienne(domain),2)
 
 
 class Mesure:
@@ -78,6 +85,53 @@ class Mesure:
         return
 
 
+    def torus(self, current_fig=False, subplot=False):
+        if subplot == True:
+            ax = fig.add_subplot(224, projection='3d')
+            theta = np.linspace(0, 2 * np.pi, N_ech)
+            y_torus = np.sin(theta)
+            x_torus = np.cos(theta)
+            
+            a_x_torus = np.sin(2*np.pi*np.array(self.x))
+            a_y_torus = np.cos(2*np.pi*np.array(self.x))
+            a_z_torus = self.a
+            
+            ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
+            ax.plot(a_x_torus,a_y_torus, a_z_torus, 'o', label='$m_{a,x}$', color='orange')
+            for i in range(self.N):
+                ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
+                        (0,a_z_torus[i]), '--r', color='orange')
+            ax.set_xlabel('$X$')
+            ax.set_ylabel('$Y$')
+            ax.set_zlabel('$Amplitude$')
+            ax.set_title('Mesure sur $\mathbb{S}_1$', fontsize=20)
+            ax.legend()
+            return 
+        else:
+            current_fig = plt.figure()
+            ax = current_fig.add_subplot(111, projection='3d')
+            theta = np.linspace(0, 2 * np.pi, N_ech)
+            y_torus = np.sin(theta)
+            x_torus = np.cos(theta)
+            
+            a_x_torus = np.sin(2*np.pi*np.array(self.x))
+            a_y_torus = np.cos(2*np.pi*np.array(self.x))
+            a_z_torus = self.a
+            
+            ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
+            ax.plot(a_x_torus,a_y_torus, a_z_torus, 'o', label='$m_{a,x}$', color='orange')
+            for i in range(self.N):
+                ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
+                        (0,a_z_torus[i]), '--r', color='orange')
+            return 
+            
+        
+        # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
+        ax.legend()
+        
+        plt.show()
+
+
     def kernel(self, X, noyau='gaussien'):
         '''Applique un noyau à la mesure discrète. Exemple : convol'''
         N = self.N
@@ -87,7 +141,13 @@ class Mesure:
         if noyau == 'gaussien':
             for i in range(0,N):
                 acquis += a[i]*gaussienne(X - x[i])
-        return acquis
+            return acquis
+        elif noyau == 'double_gaussien':
+            for i in range(0,N):
+                acquis += a[i]*double_gaussienne(X - x[i])
+            return acquis
+        else:
+            return acquis
 
 
     def acquisition(self, nv):
@@ -126,8 +186,8 @@ class Mesure:
 # m = Mesure([1,1.1,0,1.5],[2,88,3,8])
 # print(m.prune())
 
-def phi(m, X):
-    return m.kernel(X)
+def phi(m, domain):
+    return m.kernel(domain)
 
 
 def phi_vecteur(a, x, shape=0):
@@ -163,16 +223,16 @@ def phi_vecteur_2(a, x, domain):
 
 
 
-def phiAdjoint(y, X, noyau='gaussien'):
+def phiAdjoint(y, domain, noyau='gaussien'):
     eta = np.empty(N_ech)
     for i in range(N_ech):
-        x = X[i]
-        eta[i] = integrate.simps(y*gaussienne(x-X),x=X)
+        x = domain[i]
+        eta[i] = integrate.simps(y*gaussienne(x-domain),x=domain)
     return eta
 
 
 def etaW(x, N, sigma, noyau='gaussien'):
-    '''Certificat \eta_W dans le cas gaussien'''
+    '''Certificat \eta_W dans le cas gaussien, avec formule analytique'''
     x = x/sigma # Normalisation
     tmp = 0
     for k in range(1,N+1):
@@ -262,7 +322,6 @@ def SFW(y, regul=1e-5, nIter=5):
     for k in range(nIter):
         print('\n' + 'Etape numéro ' + str(k))
         eta_V_k = etak(mesure_k, y, regul)
-        
         x_star_index = np.argmax(np.abs(eta_V_k))
         x_star = x_star_index/N_ech
         print('* x^* = ' + str(x_star) + ' max à ' + str(np.round(eta_V_k[x_star_index], 2)))
@@ -319,39 +378,50 @@ def SFW(y, regul=1e-5, nIter=5):
     return(mesure_k, nrj_vecteur)
 
 
-(m_sfw, nrj_sfw) = SFW(y, regul=1e-4, nIter=5)
+lambda_regul = 5e-4
+(m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5)
 print(m_sfw)
-certificat_V = etak(m_sfw, y, regul)
+certificat_V = etak(m_sfw, y, lambda_regul)
 
 if m_sfw != 0:
-    plt.figure(figsize=(21,4))
-    plt.subplot(131)
+    # plt.figure(figsize=(21,4))
+    fig = plt.figure(figsize=(15,12))
+    plt.subplot(221)
     plt.plot(X,y, label='$y_0$')
     plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
               markerfmt='C1o', use_line_collection=True, basefmt=" ")
     plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
               markerfmt='C2o', use_line_collection=True, basefmt=" ")
-    plt.xlabel('$x$', fontsize=18)
-    plt.ylabel(f'Lumino à $\lambda=${regul:.1e}', fontsize=18)
+    # plt.xlabel('$x$', fontsize=18)
+    plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
     plt.title('$m_{a,x}$ contre la mesure VT', fontsize=20)
     plt.grid()
     plt.legend()
     
-    plt.subplot(132)
+    plt.subplot(222)
     plt.plot(X, certificat_V,'r')
     plt.axhline(y=1, color='gray', linestyle='--')
     plt.axhline(y=-1, color='gray', linestyle='--')
-    plt.xlabel('$x$', fontsize=18)
-    plt.ylabel(f'Lumino à $\lambda=${regul:.1e}', fontsize=18)
+    # plt.xlabel('$x$', fontsize=18)
+    plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
     plt.title('Certificat $\eta$ mesure finale', fontsize=20)
     plt.grid()
     
-    plt.subplot(133)
+    plt.subplot(223)
     plt.plot(nrj_sfw, 'o--')
     plt.xlabel('Itération', fontsize=18)
     plt.ylabel('$\mathcal{J}_\lambda$(m)', fontsize=20)
     plt.title('Décroissance énergie', fontsize=20)
     plt.grid()
+    
+    m_sfw.torus(current_fig=fig, subplot=True)
+    
+    if __saveFig__ == True:
+        plt.savefig('fig/dirac-certificat.pdf', format='pdf', dpi=1000,
+        bbox_inches='tight', pad_inches=0.03)
+
+#%%
+
 
 
 # #%%
