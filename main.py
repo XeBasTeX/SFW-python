@@ -204,7 +204,7 @@ def phi_vecteur(a, x, domain):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
     m_tmp = Mesure(a, x)
-    return(m_tmp.kernel(X))
+    return(m_tmp.kernel(domain))
 
 
 
@@ -328,7 +328,7 @@ def SFW(y, regul=1e-5, nIter=5):
 
             # On résout LASSO (étape 7)
             def lasso(a):
-                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y)))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,X))
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
             # lasso = lambda a : 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y))) + regul*np.linalg.norm(a, 1)
@@ -342,7 +342,7 @@ def SFW(y, regul=1e-5, nIter=5):
             def lasso_double(params):
                 a = params[:int(len(params)/2)]
                 x = params[int(len(params)/2):]
-                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x,len(y)))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x,X))
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
 

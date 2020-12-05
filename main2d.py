@@ -13,10 +13,10 @@ import scipy
 
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 8e-3 # Param de relaxation
-niveaubruits = 1e-2 # sigma du bruit
+# lambda_regul = 1e-3 # Param de relaxation
+niveaubruits = 1e-3 # sigma du bruit
 
-N_ech = 50
+N_ech = 100
 xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
@@ -25,23 +25,24 @@ X, Y = np.meshgrid(X_grid, X_grid)
 
 class Mesure2D:
     
-    def __init__(self, amplitude, position):
+    def __init__(self, amplitude=[], position=[]):
         if len(amplitude) != len(position):
             raise ValueError('Pas le même nombre')
-        if isinstance(amplitude, list):
-            self.a = np.array(amplitude)
-        if isinstance(position, list):
-            self.x = np.array(position)
-        else:
+        if isinstance(amplitude, np.ndarray) and isinstance(position, np.ndarray):
             self.a = amplitude
             self.x = position
+        else:
+            self.x = np.array(position)
+            self.a = np.array(amplitude)
         self.N = len(amplitude)
 
 
     def __add__(self, m):
         '''Hieher : il faut encore régler laddition pour les mesures au même position'''
         '''ça vaudrait le coup de virer les duplicats'''
-        return Mesure2D(self.a + m.a, self.x + m.x)
+        a_new = np.append(self.a, m.a)
+        x_new = np.array(list(self.x) + list(m.x))
+        return Mesure2D(a_new, x_new)
 
 
     def __eq__(self, m):
@@ -58,8 +59,8 @@ class Mesure2D:
 
 
     def __str__(self):
-        amplitudes = np.round(self.a, 2)
-        positions = np.round(self.x, 2)
+        amplitudes = np.round(self.a, 3)
+        positions = np.round(self.x, 3)
         return(f"{self.N} molécules d'amplitudes : {amplitudes} --- Positions : {positions}")
 
 
@@ -71,12 +72,12 @@ class Mesure2D:
         acquis = X_domain*0
         if noyau == 'gaussien':
             for i in range(0,N):
-                D = np.sqrt(np.power(X_domain - x[i,1],2) + np.power(Y_domain - x[i,1],2))
+                D = np.sqrt(np.power(X_domain - x[i,0],2) + np.power(Y_domain - x[i,1],2))
                 acquis += a[i]*gaussienne(D)
             return acquis
         elif noyau == 'double_gaussien':
             for i in range(0,N):
-                D = np.sqrt(np.power(X_domain - x[i,1],2) + np.power(Y_domain - x[i,1],2))
+                D = np.sqrt(np.power(X_domain - x[i,0],2) + np.power(Y_domain - x[i,1],2))
                 acquis += a[i]*double_gaussienne(D)
             return acquis
         else:
@@ -90,7 +91,7 @@ class Mesure2D:
 
 
     def graphe(self, X_domain, Y_domain, lvl=50):
-        f = plt.figure()
+        # f = plt.figure()
         plt.contourf(X_domain, Y_domain, self.kernel(X_domain, Y_domain), 
                      lvl, label='$y_0$', cmap='hot')
         plt.xlabel('X', fontsize=18)
@@ -98,7 +99,8 @@ class Mesure2D:
         plt.title('Acquisition y', fontsize=18)
         plt.colorbar();
         plt.grid()
-        return f
+        plt.show()
+        return
 
 
     def torus(self, X, current_fig=False, subplot=False):
@@ -137,7 +139,7 @@ class Mesure2D:
         return np.linalg.norm(self.a, 1)
 
 
-    def energie(X_domain, Y_domain, y, regul, self):
+    def energie(self, X_domain, Y_domain, y, regul):
         attache = 0.5*np.linalg.norm(y - self.kernel(X_domain, Y_domain))
         parcimonie = regul*self.tv()
         return(attache + parcimonie)
@@ -156,30 +158,34 @@ class Mesure2D:
 
 
 def mesureAleatoire(N):
-    x = (np.round(np.random.rand(1,N), 2)).tolist()[0]
-    a = (np.round(np.random.rand(1,N), 2)).tolist()[0]
+    x = np.round(np.random.rand(1,N), 2)
+    a = np.round(np.random.rand(1,N), 2)
     return Mesure2D(a, x)
 
 # m = Mesure([1,1.1,0,1.5],[2,88,3,8])
 # print(m.prune())
 
-def phi(m, domain):
-    return m.kernel(domain)
+def phi(m, X_domain, Y_domain):
+    return m.kernel(X_domain, Y_domain)
 
-def phi_vecteur(a, x, domain):
+def phi_vecteur(a, x, X_domain, Y_domain):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
     m_tmp = Mesure2D(a, x)
-    return(m_tmp.kernel(domain))
+    return(m_tmp.kernel(X_domain, Y_domain))
 
 
 
-def phiAdjoint(y, domain, noyau='gaussien'):
-    taille_y = np.size(y)
-    eta = np.empty(np.size(y))
+def phiAdjoint(y, X_domain, Y_domain, noyau='gaussien'):
+    taille_y = len(y)
+    eta = np.empty(np.shape(y))
     for i in range(taille_y):
-        x = domain[i]
-        eta[i] = integrate.simps(y*gaussienne(x-domain),x=domain)
+        for j in range(taille_y):
+            x_decal = X_domain[i,j]
+            y_decal = Y_domain[i,j]
+            D_decal = np.sqrt(np.power(x_decal-X_domain,2) + np.power(y_decal-Y_domain,2))
+            integ_x = integrate.simps(y*gaussienne(D_decal), x=X_grid)
+            eta[i,j] = integrate.simps(integ_x, x=X_grid)
     return eta
 
 
@@ -207,8 +213,8 @@ def etaWx0(x, x0, mesure, sigma, noyau='gaussien'):
 # plt.plot(X,etaW(X,5,0.1))
 
 
-def etak(mesure, X, y, regul):
-    eta = 1/regul*phiAdjoint(y - phi(mesure, X), X)
+def etak(mesure, y, X_domain, Y_domain, regul):
+    eta = 1/regul*phiAdjoint(y - phi(mesure, X_domain, Y_domain), X_domain, Y_domain)
     return eta
 
 def gaussienne(domain, sigma=1e-1):
@@ -221,10 +227,131 @@ def double_gaussienne(domain):
     return np.power(gaussienne(domain),2)
 
 
-N_ech = 50
+# Le fameux algo de Sliding Frank Wolfe
+
+def SFW(y, regul=1e-5, nIter=5):
+    '''y acquisition et nIter nombre d'itérations'''
+    N_ech_y = len(y)
+    a_k = np.empty((0,0))
+    x_k = np.empty((0,0))
+    mesure_k = Mesure2D(a_k, x_k)    # Msure discrète vide
+    Nk = 0                      # Taille de la mesure discrète
+    nrj_vecteur = np.zeros(nIter)
+    for k in range(nIter):
+        print('\n' + 'Etape numéro ' + str(k))
+        eta_V_k = etak(mesure_k, y, X, Y, regul)
+        x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None), eta_V_k.shape)
+        x_star = np.array(x_star_index)/N_ech_y # hierher passer de l'idx à xstar
+        print(f'* x^* index {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
+        
+        # Condition d'arrêt (étape 4)
+        if np.abs(eta_V_k[x_star_index]) < 1:
+            nrj_vecteur[k] = mesure_k.energie(X, Y, y, regul)
+            print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            print("\n\n---- Condition d'arrêt ----")
+            return(mesure_k, nrj_vecteur)
+        else:
+            mesure_k_demi = Mesure2D()
+            if x_k.size == 0:
+                x_k_demi = np.vstack([x_star])
+            else:
+                x_k_demi = np.vstack([x_k, x_star])
+
+            # On résout LASSO (étape 7)
+            def lasso(a):
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,X,Y))
+                parcimonie = regul*np.linalg.norm(a, 1)
+                return(attache + parcimonie)
+            # lasso = lambda a : 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y))) + regul*np.linalg.norm(a, 1)
+            res = scipy.optimize.minimize(lasso, np.ones(Nk+1)) # renvoie un array (et pas une liste)
+            a_k_demi = res.x
+            print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
+            mesure_k_demi += Mesure2D(a_k_demi,x_k_demi)
+            print('* Mesure_k_demi : ' +  str(mesure_k_demi))
+
+            # On résout double LASSO non-convexe (étape 8)
+            def lasso_double(params):
+                a_p = params[:int(len(params)/3)] # Bout de code immonde, à corriger !
+                x_p = params[int(len(params)/3):]
+                x_p = x_p.reshape((len(a_p), 2))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a_p,x_p,X,Y))
+                parcimonie = regul*np.linalg.norm(a_p, 1)
+                return(attache + parcimonie)
+
+            # On met la graine au format array pour scipy...minimize
+            # Il faut en effet que ça soit un vecteur
+            initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
+            res = scipy.optimize.minimize(lasso_double, initial_guess,
+                                          method='BFGS',
+                                          options={'disp': True})
+            a_k_plus = (res.x[:int(len(res.x)/3)])
+            x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
+
+            # Mise à jour des paramètres avec retrait des Dirac nuls
+            mesure_k = Mesure2D(a_k_plus, x_k_plus)
+            mesure_k = mesure_k.prune(tol=1e-2)
+            a_k = mesure_k.a
+            x_k = mesure_k.x
+            Nk = mesure_k.N
+
+            # Graphe et énergie
+            # mesure_k.graphe()
+            nrj_vecteur[k] = 0.5*np.linalg.norm(y - mesure_k.kernel(X,Y)) + regul*mesure_k.tv()
+            print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            
+    print("\n\n---- Fin de la boucle ----")
+    return(mesure_k, nrj_vecteur)
+
+
+N_ech = 20
 xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
 X, Y = np.meshgrid(X_grid, X_grid)
 
-m_ax0 = Mesure2D([0.5,1],[[0.25,0.25],[0.75,0.75]])
+m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
+y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
+
+
+lambda_regul = 1e-5 # Param de relaxation
+(m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5)
+print('On a retrouvé m_ax = ' + str(m_sfw))
+certificat_V = etak(m_sfw, y, X, Y, lambda_regul)
+print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+
+
+fig = plt.figure(figsize=(12,12))
+fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
+             f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
+
+plt.subplot(221)
+plt.contourf(X, Y, y, 50, cmap='hot')
+plt.xlabel('X', fontsize=18)
+plt.ylabel('Y', fontsize=18)
+plt.title('Acquisition $y = \Phi m_{a_0,x_0} + w$', fontsize=20)
+plt.colorbar();
+# plt.grid()
+
+plt.subplot(222)
+plt.contourf(X, Y, m_sfw.kernel(X, Y), 50, cmap='hot')
+plt.xlabel('X', fontsize=18)
+plt.ylabel('Y', fontsize=18)
+plt.title('Reconstruction de $m$', fontsize=20)
+plt.colorbar();
+# plt.grid()
+
+plt.subplot(223)
+plt.contourf(X, Y, certificat_V, 50, cmap='hot')
+plt.xlabel('X', fontsize=18)
+plt.ylabel('Y', fontsize=18)
+plt.title('Certificat $\eta_V$', fontsize=20)
+plt.colorbar();
+
+plt.subplot(224)
+plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
+plt.xlabel('Itération', fontsize=18)
+plt.ylabel('$T_\lambda$(m)', fontsize=20)
+plt.title('Décroissance énergie', fontsize=20)
+plt.grid()
+
+
