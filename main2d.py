@@ -158,8 +158,8 @@ class Mesure2D:
 
 
 def mesureAleatoire(N):
-    x = np.round(np.random.rand(1,N), 2)
-    a = np.round(np.random.rand(1,N), 2)
+    x = np.round(np.random.rand(N,2), 2)
+    a = np.round(0.5 + np.random.rand(1,N), 2)[0]
     return Mesure2D(a, x)
 
 # m = Mesure([1,1.1,0,1.5],[2,88,3,8])
@@ -229,13 +229,15 @@ def double_gaussienne(domain):
 
 # Le fameux algo de Sliding Frank Wolfe
 
-def SFW(y, regul=1e-5, nIter=5):
+def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
     '''y acquisition et nIter nombre d'itérations'''
     N_ech_y = len(y)
     a_k = np.empty((0,0))
     x_k = np.empty((0,0))
     mesure_k = Mesure2D(a_k, x_k)    # Msure discrète vide
     Nk = 0                      # Taille de la mesure discrète
+    if mesParIter == True:
+        mes_vecteur = np.array([])
     nrj_vecteur = np.zeros(nIter)
     for k in range(nIter):
         print('\n' + 'Etape numéro ' + str(k))
@@ -249,7 +251,10 @@ def SFW(y, regul=1e-5, nIter=5):
             nrj_vecteur[k] = mesure_k.energie(X, Y, y, regul)
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
-            return(mesure_k, nrj_vecteur)
+            if mesParIter == True:
+                return(mesure_k, nrj_vecteur, mes_vecteur)
+            else:
+                return(mesure_k, nrj_vecteur)
         else:
             mesure_k_demi = Mesure2D()
             if x_k.size == 0:
@@ -298,60 +303,121 @@ def SFW(y, regul=1e-5, nIter=5):
             # mesure_k.graphe()
             nrj_vecteur[k] = 0.5*np.linalg.norm(y - mesure_k.kernel(X,Y)) + regul*mesure_k.tv()
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            if mesParIter == True:
+                mes_vecteur = np.append(mes_vecteur, [mesure_k])
             
     print("\n\n---- Fin de la boucle ----")
-    return(mesure_k, nrj_vecteur)
+    if mesParIter == True:
+        return(mesure_k, nrj_vecteur, mes_vecteur)
+    else:
+        return(mesure_k, nrj_vecteur)
 
 
-N_ech = 20
+N_ech = 50
 xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
 X, Y = np.meshgrid(X_grid, X_grid)
 
-m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
+# m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
+m_ax0 = mesureAleatoire(5)
 y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
 
 lambda_regul = 1e-5 # Param de relaxation
-(m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5)
+iteration = 6
+# (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=iteration)
+(m_sfw, nrj_sfw, mes_sfw) = SFW(y, regul=lambda_regul, nIter=iteration,
+                                 mesParIter=True)
 print('On a retrouvé m_ax = ' + str(m_sfw))
 certificat_V = etak(m_sfw, y, X, Y, lambda_regul)
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 
-fig = plt.figure(figsize=(12,12))
+fig = plt.figure(figsize=(15,12))
 fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
              f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
 
+
 plt.subplot(221)
-plt.contourf(X, Y, y, 50, cmap='hot')
+plt.contourf(X, Y, y, 100, cmap='hot')
+plt.colorbar();
+plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x', label='Hidden spikes')
+plt.scatter(m_sfw.x[:,0], m_sfw.x[:,1], marker='+', label='Recovered spikes')
+plt.legend(loc=2)
+
 plt.xlabel('X', fontsize=18)
 plt.ylabel('Y', fontsize=18)
 plt.title('Acquisition $y = \Phi m_{a_0,x_0} + w$', fontsize=20)
-plt.colorbar();
 # plt.grid()
 
 plt.subplot(222)
-plt.contourf(X, Y, m_sfw.kernel(X, Y), 50, cmap='hot')
+plt.contourf(X, Y, m_sfw.kernel(X, Y), 100, cmap='hot')
 plt.xlabel('X', fontsize=18)
 plt.ylabel('Y', fontsize=18)
-plt.title('Reconstruction de $m$', fontsize=20)
+plt.title('Reconstruction $m_{a,x}$', fontsize=20)
 plt.colorbar();
+# sns.heatmap(m_sfw.kernel(X, Y), square=True)
 # plt.grid()
 
 plt.subplot(223)
-plt.contourf(X, Y, certificat_V, 50, cmap='hot')
+plt.contourf(X, Y, certificat_V, 100, cmap='hot')
 plt.xlabel('X', fontsize=18)
 plt.ylabel('Y', fontsize=18)
-plt.title('Certificat $\eta_V$', fontsize=20)
+plt.title('Certificate $\eta_V$', fontsize=20)
 plt.colorbar();
 
 plt.subplot(224)
 plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
 plt.xlabel('Itération', fontsize=18)
-plt.ylabel('$T_\lambda$(m)', fontsize=20)
-plt.title('Décroissance énergie', fontsize=20)
+plt.ylabel('$T_\lambda(m)$', fontsize=20)
+plt.title('BLASSO energy $T_\lambda(m)$', fontsize=20)
 plt.grid()
 
+# plt.savefig('fig/dirac-certificat-2d.pdf', format='pdf', dpi=1000,
+#             bbox_inches='tight', pad_inches=0.03)
+#%%
+from matplotlib.animation import FuncAnimation
+
+
+# fig, ax = plt.subplots(figsize=(10, 10))
+fig = plt.figure(figsize=(20, 10))
+
+ax1 = fig.add_subplot(121)
+ax1.contourf(X, Y, y, 100, cmap='hot')
+ax1.set_xlabel('X', fontsize=20)
+ax1.set_ylabel('Y', fontsize=20)
+ax1.set_title('Acquisition $y$', fontsize=30)
+
+
+ax2 = fig.add_subplot(122)
+# ax2.set(xlim=(0, 1), ylim=(0, 1))
+contour = ax2.contourf(X, Y, y, 100, cmap='hot')
+ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+           s=N_ech, label='Hidden spikes')
+scat = ax2.scatter(mes_sfw[0].x[:,0], mes_sfw[0].x[:,1], marker='+',
+                  s=2*N_ech, c='g', label='Recovered spikes')
+ax2.legend(loc=2, fontsize=15)
+
+def animate(k):
+    ax2.clear()
+    ax2.contourf(X, Y, mes_sfw[k].kernel(X,Y), 100, cmap='hot')
+    ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+           s=N_ech, label='Hidden spikes')
+    ax2.scatter(mes_sfw[k].x[:,0], mes_sfw[k].x[:,1], marker='+',
+                  s=2*N_ech, c='g', label='Recovered spikes')
+    # scat.set_offsets(np.c_[mes_sfw[k].x[:,0], mes_sfw[k].x[:,1]])
+    ax2.set_xlabel('X', fontsize=20)
+    ax2.set_ylabel('Y', fontsize=20)
+    ax2.set_title(f'Itération = {k}', fontsize=30)
+
+
+anim = FuncAnimation(fig, animate, interval=1000, frames=iteration-1,
+                     blit=False)
+ 
+plt.draw()
+plt.show()
+
+anim.save('fig/anim.gif')
+# anim.save('fig/anim.gif', writer='Pillow')
 
