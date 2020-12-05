@@ -5,7 +5,7 @@ Created on Wed Nov 18 11:32:17 2020
 
 @author: Bastien Laville (https://github.com/XeBasTeX)
 
-Cas 1D sans bruit pour SFW
+Cas 1D pour SFW
 """
 
 
@@ -25,13 +25,13 @@ import scipy
 
 
 # np.random.seed(0)
-N_ech = 100 # Taux d'échantillonnage'
+N_ech = 100 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 1e-3 # Param de relaxation
+lambda_regul = 8e-3 # Param de relaxation
 niveaubruits = 1e-2 # sigma du bruit
 
 
@@ -45,13 +45,19 @@ def double_gaussienne(domain):
     return np.power(gaussienne(domain),2)
 
 
+def ideal_lowpass(domain, fc):
+    '''Passe-bas idéal de fréquence de coupure f_c'''
+    return np.sin((2*fc + 1)*np.pi*domain)/np.sin(np.pi*domain)
+
+
 class Mesure:
-    def __init__(self, amplitude, position):
+    def __init__(self, amplitude, position, typeDomaine='segment'):
         if len(amplitude) != len(position):
             raise ValueError('Pas le même nombre')
         self.a = amplitude
         self.x = position
         self.N = len(amplitude)
+        self.Xtype = typeDomaine
 
 
     def __add__(self, m):
@@ -137,16 +143,19 @@ class Mesure:
 
 
     def acquisition(self, nv):
+        '''Opérateur d'acquistions ainsi que bruiateg blanc gaussien
+            de DSP nv (pour niveau).'''
         w = nv*np.random.random_sample((N_ech))
         acquis = self.kernel(X, noyau='gaussien') + w
         return acquis
 
 
     def tv(self):
+        '''Norme TV de la mesure'''
         return np.linalg.norm(self.a, 1)
 
 
-    def energie(X, y, regul, self):
+    def energie(self, X, y, regul):
         attache = 0.5*np.linalg.norm(y - self.kernel(X))
         parcimonie = regul*self.tv()
         return(attache + parcimonie)
@@ -162,6 +171,22 @@ class Mesure:
         nnz_x = nnz_x[nnz]
         m = Mesure(nnz_a.tolist(), nnz_x.tolist())
         return m
+
+
+    def deltaSeparation(self):
+        '''Donne la plus petite distance entre Diracs de la mesure considérée
+        selon l'option (tore ou segment)'''
+        diff = np.inf
+        if self.Xtype == 'segment':
+            for i in range(self.N-1): 
+                for j in range(i+1,self.N): 
+                    if abs(self.x[i]-self.x[j]) < diff: 
+                        diff = abs(self.x[i] - self.x[j]) 
+            return diff
+        elif self.xtype == 'tore':
+            print('à def')
+        else:
+            raise TypeError
 
 
 def mesureAleatoire(N):
@@ -205,7 +230,7 @@ def etaWx0(x, x0, mesure, sigma, noyau='gaussien'):
     '''Certificat \eta_W dans le cas gaussien'''
     N = mesure.N
     x = x/sigma # Normalisation
-    tmp = 0
+    tmp = np.zeros(x.size)
     for k in range(N):
         tmp += ((x - x0)**(2*k))/((2*sigma)**(2*k)*np.math.factorial(k))
     eta = np.exp(-(x - x0)**2/4)*tmp
@@ -224,10 +249,15 @@ def etak(mesure, y, regul):
 m_ax0 = Mesure([1.3,0.8,1.4], [0.3,0.37,0.7])
 y = m_ax0.acquisition(niveaubruits)
 
-# m_ax = Mesure([1.31,0.79,1.39], [0.3,0.37,0.7])
 # certificat_V = etak(m_ax, y, regul)
-# certificat_W_x0 = etaWx0(X, 0.5, m_ax, sigma)
+certificat_W_x0 = etaWx0(X, 0.5, m_ax0, sigma)
+plt.plot(X, certificat_W_x0)
+plt.grid()
 
+
+
+
+#%
 
 # GRAPHIQUES
 
@@ -273,7 +303,7 @@ y = m_ax0.acquisition(niveaubruits)
 
 def SFW(y, regul=1e-5, nIter=5):
     '''y acquisition et nIter nombre d'itérations'''
-    N_ech = len(y)
+    N_ech_y = len(y)
     a_k = []
     x_k = []
     mesure_k = Mesure(a_k, x_k)    # Msure discrète vide
@@ -283,11 +313,13 @@ def SFW(y, regul=1e-5, nIter=5):
         print('\n' + 'Etape numéro ' + str(k))
         eta_V_k = etak(mesure_k, y, regul)
         x_star_index = np.argmax(np.abs(eta_V_k))
-        x_star = x_star_index/N_ech
+        x_star = x_star_index/N_ech_y
         print(f'* x^* = {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
         
-        # Condition d'arrêt (attention x_star est un indice)
+        # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
+            nrj_vecteur[k] = mesure_k.energie(X, y, regul)
+            print(f'* Energie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
             return(mesure_k, nrj_vecteur)
         else:
@@ -305,10 +337,8 @@ def SFW(y, regul=1e-5, nIter=5):
             print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
             mesure_k_demi += Mesure(a_k_demi,x_k_demi)
             print('* Mesure_k_demi : ' +  str(mesure_k_demi))
-            # lasso.fit(phi_vecteur()) 
-            # mesure_k_demi += Mesure([a_k_demi],[mesure_k[i]])
 
-            # On résout double LASSO (étape 8)
+            # On résout double LASSO non-convexe (étape 8)
             def lasso_double(params):
                 a = params[:int(len(params)/2)]
                 x = params[int(len(params)/2):]
@@ -339,46 +369,81 @@ def SFW(y, regul=1e-5, nIter=5):
     return(mesure_k, nrj_vecteur)
 
 
-lambda_regul = 5e-4
-(m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5)
-print(m_sfw)
-certificat_V = etak(m_sfw, y, lambda_regul)
+
+if __name__ == '__main__':
+    (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5)
+    print('On a retrouvé m_ax ' + str(m_sfw))
+    certificat_V = etak(m_sfw, y, lambda_regul)
+    print('On voulait retrouver m_ax0 ' + str(m_ax0))
+    
+    if m_sfw != 0:
+        # plt.figure(figsize=(21,4))
+        fig = plt.figure(figsize=(15,12))
+        plt.subplot(221)
+        plt.plot(X,y, label='$y$', linewidth=1.7)
+        plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
+                  markerfmt='C1o', use_line_collection=True, basefmt=" ")
+        plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
+                  markerfmt='C2o', use_line_collection=True, basefmt=" ")
+        # plt.xlabel('$x$', fontsize=18)
+        plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
+        plt.title('$m_{a,x}$ contre la VT $m_{a_0,x_0}$', fontsize=20)
+        plt.grid()
+        plt.legend()
+        
+        plt.subplot(222)
+        plt.plot(X, certificat_V, 'r', linewidth=2)
+        plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
+        plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
+        # plt.xlabel('$x$', fontsize=18)
+        plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
+        plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
+        plt.grid()
+        
+        plt.subplot(223)
+        plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
+        plt.xlabel('Itération', fontsize=18)
+        plt.ylabel('$T_\lambda$(m)', fontsize=20)
+        plt.title('Décroissance énergie', fontsize=20)
+        plt.grid()
+        
+        m_sfw.torus(current_fig=fig, subplot=True)
+        
+        if __saveFig__ == True:
+            plt.savefig('fig/dirac-certificat.pdf', format='pdf', dpi=1000,
+            bbox_inches='tight', pad_inches=0.03)
 
 
-if m_sfw != 0:
-    # plt.figure(figsize=(21,4))
-    fig = plt.figure(figsize=(15,12))
-    plt.subplot(221)
-    plt.plot(X,y, label='$y$', linewidth=1.7)
-    plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
-              markerfmt='C1o', use_line_collection=True, basefmt=" ")
-    plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
-              markerfmt='C2o', use_line_collection=True, basefmt=" ")
-    # plt.xlabel('$x$', fontsize=18)
-    plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
-    plt.title('$m_{a,x}$ contre la VT $m_{a_0,x_0}$', fontsize=20)
-    plt.grid()
-    plt.legend()
-    
-    plt.subplot(222)
-    plt.plot(X, certificat_V, 'r', linewidth=2)
-    plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
-    plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
-    # plt.xlabel('$x$', fontsize=18)
-    plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
-    plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
-    plt.grid()
-    
-    plt.subplot(223)
-    plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
-    plt.xlabel('Itération', fontsize=18)
-    plt.ylabel('$T_\lambda$(m)', fontsize=20)
-    plt.title('Décroissance énergie', fontsize=20)
-    plt.grid()
-    
-    m_sfw.torus(current_fig=fig, subplot=True)
-    
-    if __saveFig__ == True:
-        plt.savefig('fig/dirac-certificat.pdf', format='pdf', dpi=1000,
-        bbox_inches='tight', pad_inches=0.03)
+
+# Playground
+
+# # Tester une autre convolution
+# # Conlusion du test : le np convolve et ma méthode donnent les mêmes résultats
+# # le np convolve est un poil plus rapide, mais il doit faire appel à find_x_on_grid 
+# # du reste je ne suis pas convaincu que ça soit la meilleure méthode
+# # ça oblige à projeter la position du dirac sur la grille.
+# # Avec ma méthode, on reste dans le continu.
+
+
+# m_test = Mesure([1],[0.5])
+# X_dble = np.linspace(xgauche-xdroit, xdroit, N_ech)/2
+
+# def find_x_on_grid(domain, m):
+#     positions = m.x
+#     amplitudes = m.a
+#     x_on_grid = np.zeros(len(domain))
+#     for j in range(len(positions)):
+#         idx = min(range(len(domain)), key=lambda i: abs(domain[i]-positions[j]))
+#         x_on_grid[idx] = amplitudes[j]
+#     return np.array(x_on_grid)
+
+# positions_on_grid = find_x_on_grid(X, m_test)
+# # y_test = np.abs(np.fft.ifft(np.fft.fft(positions_on_grid)*np.fft.fft(gaussienne(X))))
+# np_test = np.convolve(positions_on_grid, gaussienne(X_dble), mode="same")
+
+# plt.figure()
+# plt.plot(gaussienne(X_dble), '--')
+# plt.plot(np_test, 'o')
+# plt.plot(m_test.kernel(X), '^')
+# print('Erreur L^2 : ' + str(np.linalg.norm(np_test - m_test.kernel(X))))
 
