@@ -6,17 +6,29 @@ Created on Sat Dec  5 15:44:06 2020
 @author: Bastien (https://github.com/XeBasTeX)
 """
 
+
+__author__ = 'Bastien Laville'
+__team__ = 'Morpheme'
+__saveFig__ = False
+__saveVid__ = True
+__deboggage__ = True
+
+
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy import integrate
 import scipy
 
 
+np.random.seed(2)
 sigma = 1e-1 # écart-type de la PSF
 # lambda_regul = 1e-3 # Param de relaxation
-niveaubruits = 1e-3 # sigma du bruit
+niveaubruits = 1e-2 # sigma du bruit
 
-N_ech = 100
+N_ech = 70
 xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
@@ -61,7 +73,7 @@ class Mesure2D:
     def __str__(self):
         amplitudes = np.round(self.a, 3)
         positions = np.round(self.x, 3)
-        return(f"{self.N} molécules d'amplitudes : {amplitudes} --- Positions : {positions}")
+        return(f"{self.N} Diracs \nAmplitudes : {amplitudes}\nPositions : {positions}")
 
 
     def kernel(self, X_domain, Y_domain, noyau='gaussien'):
@@ -136,7 +148,10 @@ class Mesure2D:
 
 
     def tv(self):
-        return np.linalg.norm(self.a, 1)
+        try:
+            return np.linalg.norm(self.a, 1)
+        except ValueError:
+            return 0
 
 
     def energie(self, X_domain, Y_domain, y, regul):
@@ -240,7 +255,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
         mes_vecteur = np.array([])
     nrj_vecteur = np.zeros(nIter)
     for k in range(nIter):
-        print('\n' + 'Etape numéro ' + str(k))
+        print('\n' + 'Étape numéro ' + str(k))
         eta_V_k = etak(mesure_k, y, X, Y, regul)
         x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None), eta_V_k.shape)
         x_star = np.array(x_star_index)/N_ech_y # hierher passer de l'idx à xstar
@@ -249,7 +264,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
             nrj_vecteur[k] = mesure_k.energie(X, Y, y, regul)
-            print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
             if mesParIter == True:
                 return(mesure_k, nrj_vecteur, mes_vecteur)
@@ -267,8 +282,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
                 attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,X,Y))
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
-            # lasso = lambda a : 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y))) + regul*np.linalg.norm(a, 1)
-            res = scipy.optimize.minimize(lasso, np.ones(Nk+1)) # renvoie un array (et pas une liste)
+            res = scipy.optimize.minimize(lasso, np.ones(Nk+1))
             a_k_demi = res.x
             print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
             mesure_k_demi += Mesure2D(a_k_demi,x_k_demi)
@@ -301,7 +315,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
 
             # Graphe et énergie
             # mesure_k.graphe()
-            nrj_vecteur[k] = 0.5*np.linalg.norm(y - mesure_k.kernel(X,Y)) + regul*mesure_k.tv()
+            nrj_vecteur[k] = mesure_k.energie(X, Y, y, regul)
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             if mesParIter == True:
                 mes_vecteur = np.append(mes_vecteur, [mesure_k])
@@ -313,111 +327,122 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
         return(mesure_k, nrj_vecteur)
 
 
-N_ech = 50
-xgauche = 0
-xdroit = 1
-X_grid = np.linspace(xgauche, xdroit, N_ech)
-X, Y = np.meshgrid(X_grid, X_grid)
+def plot_results(m):
+    if m.a.size > 0:
+        fig = plt.figure(figsize=(15,12))
+        fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
+                     f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
+        
+        
+        plt.subplot(221)
+        plt.contourf(X, Y, y, 100, cmap='seismic')
+        plt.colorbar();
+        plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+                    label='Hidden spikes')
+        plt.scatter(m.x[:,0], m.x[:,1], marker='+',
+                    label='Recovered spikes')
+        plt.legend(loc=2)
+        
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title('Acquisition $y = \Phi m_{a_0,x_0} + w$', fontsize=20)
+        # plt.grid()
+        
+        plt.subplot(222)
+        plt.contourf(X, Y, m.kernel(X, Y), 100, cmap='seismic')
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title('Reconstruction $m_{a,x}$', fontsize=20)
+        plt.colorbar();
+        # sns.heatmap(m_sfw.kernel(X, Y), square=True)
+        # plt.grid()
+        
+        plt.subplot(223)
+        plt.contourf(X, Y, certificat_V, 100, cmap='seismic')
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title('Certificate $\eta_V$', fontsize=20)
+        plt.colorbar();
+        
+        plt.subplot(224)
+        plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
+        plt.xlabel('Itération', fontsize=18)
+        plt.ylabel('$T_\lambda(m)$', fontsize=20)
+        plt.title('BLASSO energy $T_\lambda(m)$', fontsize=20)
+        plt.grid()
+        if __saveFig__ == True:
+            plt.savefig('fig/dirac-certificat-2d.pdf', format='pdf', dpi=1000,
+                        bbox_inches='tight', pad_inches=0.03)
 
 # m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
-m_ax0 = mesureAleatoire(5)
+m_ax0 = mesureAleatoire(9)
 y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
-
-lambda_regul = 1e-5 # Param de relaxation
-iteration = 6
+lambda_regul = 9.32e-5 # Param de relaxation
+iteration = 11
 # (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=iteration)
 (m_sfw, nrj_sfw, mes_sfw) = SFW(y, regul=lambda_regul, nIter=iteration,
                                  mesParIter=True)
 print('On a retrouvé m_ax = ' + str(m_sfw))
 certificat_V = etak(m_sfw, y, X, Y, lambda_regul)
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+plot_results(m_sfw)
+y_simul = m_sfw.kernel(X,Y)
 
 
-fig = plt.figure(figsize=(15,12))
-fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
-             f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
+if __saveVid__ == True and m_sfw.a.size > 0:
+    fig = plt.figure(figsize=(20, 10))
 
+    ax1 = fig.add_subplot(121)
+    ax1.set_aspect('equal', adjustable='box')
+    cont = ax1.contourf(X, Y, y, 100, cmap='seismic')
+    divider = make_axes_locatable(ax1)
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont, cax=cax)
+    ax1.set_xlabel('X', fontsize=25)
+    ax1.set_ylabel('Y', fontsize=25)
+    ax1.set_title('Acquisition $y$', fontsize=35)
 
-plt.subplot(221)
-plt.contourf(X, Y, y, 100, cmap='hot')
-plt.colorbar();
-plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x', label='Hidden spikes')
-plt.scatter(m_sfw.x[:,0], m_sfw.x[:,1], marker='+', label='Recovered spikes')
-plt.legend(loc=2)
-
-plt.xlabel('X', fontsize=18)
-plt.ylabel('Y', fontsize=18)
-plt.title('Acquisition $y = \Phi m_{a_0,x_0} + w$', fontsize=20)
-# plt.grid()
-
-plt.subplot(222)
-plt.contourf(X, Y, m_sfw.kernel(X, Y), 100, cmap='hot')
-plt.xlabel('X', fontsize=18)
-plt.ylabel('Y', fontsize=18)
-plt.title('Reconstruction $m_{a,x}$', fontsize=20)
-plt.colorbar();
-# sns.heatmap(m_sfw.kernel(X, Y), square=True)
-# plt.grid()
-
-plt.subplot(223)
-plt.contourf(X, Y, certificat_V, 100, cmap='hot')
-plt.xlabel('X', fontsize=18)
-plt.ylabel('Y', fontsize=18)
-plt.title('Certificate $\eta_V$', fontsize=20)
-plt.colorbar();
-
-plt.subplot(224)
-plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
-plt.xlabel('Itération', fontsize=18)
-plt.ylabel('$T_\lambda(m)$', fontsize=20)
-plt.title('BLASSO energy $T_\lambda(m)$', fontsize=20)
-plt.grid()
-
-# plt.savefig('fig/dirac-certificat-2d.pdf', format='pdf', dpi=1000,
-#             bbox_inches='tight', pad_inches=0.03)
-#%%
-from matplotlib.animation import FuncAnimation
-
-
-# fig, ax = plt.subplots(figsize=(10, 10))
-fig = plt.figure(figsize=(20, 10))
-
-ax1 = fig.add_subplot(121)
-ax1.contourf(X, Y, y, 100, cmap='hot')
-ax1.set_xlabel('X', fontsize=20)
-ax1.set_ylabel('Y', fontsize=20)
-ax1.set_title('Acquisition $y$', fontsize=30)
-
-
-ax2 = fig.add_subplot(122)
-# ax2.set(xlim=(0, 1), ylim=(0, 1))
-contour = ax2.contourf(X, Y, y, 100, cmap='hot')
-ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
-           s=N_ech, label='Hidden spikes')
-scat = ax2.scatter(mes_sfw[0].x[:,0], mes_sfw[0].x[:,1], marker='+',
-                  s=2*N_ech, c='g', label='Recovered spikes')
-ax2.legend(loc=2, fontsize=15)
-
-def animate(k):
-    ax2.clear()
-    ax2.contourf(X, Y, mes_sfw[k].kernel(X,Y), 100, cmap='hot')
+    ax2 = fig.add_subplot(122)
+    # ax2.set(xlim=(0, 1), ylim=(0, 1))
+    cont_sfw = ax2.contourf(X, Y, y, 100, cmap='seismic')
+    divider = make_axes_locatable(ax2)
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont_sfw, cax=cax)
+    contour = ax2.contourf(X, Y, y, 100, cmap='seismic')
     ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
-           s=N_ech, label='Hidden spikes')
-    ax2.scatter(mes_sfw[k].x[:,0], mes_sfw[k].x[:,1], marker='+',
-                  s=2*N_ech, c='g', label='Recovered spikes')
-    # scat.set_offsets(np.c_[mes_sfw[k].x[:,0], mes_sfw[k].x[:,1]])
-    ax2.set_xlabel('X', fontsize=20)
-    ax2.set_ylabel('Y', fontsize=20)
-    ax2.set_title(f'Itération = {k}', fontsize=30)
-
-
-anim = FuncAnimation(fig, animate, interval=1000, frames=iteration-1,
-                     blit=False)
- 
-plt.draw()
-plt.show()
-
-anim.save('fig/anim.gif')
-# anim.save('fig/anim.gif', writer='Pillow')
+               s=N_ech, label='Hidden spikes')
+    scat = ax2.scatter(mes_sfw[0].x[:,0], mes_sfw[0].x[:,1], marker='+',
+                      s=2*N_ech, c='g', label='Recovered spikes')
+    ax2.legend(loc=1, fontsize=20)
+    plt.tight_layout()
+    
+    def animate(k):
+        if k >= len(mes_sfw)-1:
+            # On fige l'animation pour faire une pause à la pause
+            return
+        else:
+            ax2.clear()
+            ax2.set_aspect('equal', adjustable='box')
+            ax2.contourf(X, Y, mes_sfw[k].kernel(X,Y), 100,
+                                 cmap='seismic')
+            ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+                   s=N_ech, label='Hidden spikes')
+            ax2.scatter(mes_sfw[k].x[:,0], mes_sfw[k].x[:,1], marker='+',
+                          s=2*N_ech, c='g', label='Recovered spikes')
+            # scat.set_offsets(np.c_[mes_sfw[k].x[:,0], mes_sfw[k].x[:,1]])
+            ax2.set_xlabel('X', fontsize=25)
+            ax2.set_ylabel('Y', fontsize=25)
+            ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
+            ax2.legend(loc=1, fontsize=20)
+            plt.tight_layout()
+            
+    
+    anim = FuncAnimation(fig, animate, interval=1000, frames=len(mes_sfw)+3,
+                         blit=False)
+     
+    plt.draw()
+    # plt.show()
+    anim.save('fig/anim-sfw-2d.gif')
+    # anim.save('fig/anim.gif', writer='Pillow')
 
