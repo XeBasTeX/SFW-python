@@ -23,7 +23,7 @@ from scipy import integrate
 import scipy
 
 
-np.random.seed(2)
+np.random.seed(80)
 sigma = 1e-1 # écart-type de la PSF
 # lambda_regul = 1e-3 # Param de relaxation
 niveaubruits = 1e-2 # sigma du bruit
@@ -378,7 +378,7 @@ def plot_results(m):
 m_ax0 = mesureAleatoire(9)
 y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
-lambda_regul = 9.32e-5 # Param de relaxation
+lambda_regul = 1e-5 # Param de relaxation
 iteration = 11
 # (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=iteration)
 (m_sfw, nrj_sfw, mes_sfw) = SFW(y, regul=lambda_regul, nIter=iteration,

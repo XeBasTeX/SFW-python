@@ -31,8 +31,8 @@ xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 8e-3 # Param de relaxation
-niveaubruits = 1e-2 # sigma du bruit
+lambda_regul = 8e-4 # Param de relaxation
+niveaubruits = 0 # sigma du bruit
 
 
 def gaussienne(domain):
@@ -246,7 +246,7 @@ def etak(mesure, y, regul):
 
 
 # m_ax0 = Mesure([1.3,0.8,1.4], [0.3,0.37,0.7])
-m_ax0 = Mesure([1.3,0.8,1.4], [0.3,0.37,0.7])
+m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.37,0.7])
 y = m_ax0.acquisition(niveaubruits)
 
 # certificat_V = etak(m_ax, y, regul)
@@ -413,37 +413,31 @@ if __name__ == '__main__':
             plt.savefig('fig/dirac-certificat.pdf', format='pdf', dpi=1000,
             bbox_inches='tight', pad_inches=0.03)
 
+#%%
+def regulPath(acquis, lambda_debut, lambda_fin, nb_lambda):
+    lambda_vecteur = np.linspace(lambda_debut, lambda_fin, nb_lambda)
+    chemin = [[]] * len(lambda_vecteur)
+    for i in range(len(lambda_vecteur)):
+        l = lambda_vecteur[i]
+        (m, nrj) = SFW(acquis, regul=l, nIter=5)
+        chemin[i] = m.x
+    return (chemin, lambda_vecteur)
+
+def tracePath(chemin, lambda_vecteur):
+    for j in range(len(chemin)):
+        l_x = lambda_vecteur[j]*np.ones(len(chemin[j]))
+        plt.scatter(l_x,chemin[j], marker='x', c='b')
+    plt.xlabel('Paramètre $\lambda$', fontsize=18)
+    plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    plt.ylabel('$x_i$ retrouvées', fontsize=18)
+    plt.title('Chemin de régularisation', fontsize=20)
+    plt.ylim(xgauche, xdroit)
+    plt.grid()
 
 
-# Playground
-
-# # Tester une autre convolution
-# # Conlusion du test : le np convolve et ma méthode donnent les mêmes résultats
-# # le np convolve est un poil plus rapide, mais il doit faire appel à find_x_on_grid 
-# # du reste je ne suis pas convaincu que ça soit la meilleure méthode
-# # ça oblige à projeter la position du dirac sur la grille.
-# # Avec ma méthode, on reste dans le continu.
-
-
-# m_test = Mesure([1],[0.5])
-# X_dble = np.linspace(xgauche-xdroit, xdroit, N_ech)/2
-
-# def find_x_on_grid(domain, m):
-#     positions = m.x
-#     amplitudes = m.a
-#     x_on_grid = np.zeros(len(domain))
-#     for j in range(len(positions)):
-#         idx = min(range(len(domain)), key=lambda i: abs(domain[i]-positions[j]))
-#         x_on_grid[idx] = amplitudes[j]
-#     return np.array(x_on_grid)
-
-# positions_on_grid = find_x_on_grid(X, m_test)
-# # y_test = np.abs(np.fft.ifft(np.fft.fft(positions_on_grid)*np.fft.fft(gaussienne(X))))
-# np_test = np.convolve(positions_on_grid, gaussienne(X_dble), mode="same")
-
-# plt.figure()
-# plt.plot(gaussienne(X_dble), '--')
-# plt.plot(np_test, 'o')
-# plt.plot(m_test.kernel(X), '^')
-# print('Erreur L^2 : ' + str(np.linalg.norm(np_test - m_test.kernel(X))))
+(chemin_regul, regul_vecteur) = regulPath(y, 2e-3, 4e-3, 200)
+tracePath(chemin_regul, regul_vecteur)
+if __saveFig__ == True:
+    plt.savefig('fig/regularisation-chemin.pdf', format='pdf', dpi=1000,
+    bbox_inches='tight', pad_inches=0.03)
 
