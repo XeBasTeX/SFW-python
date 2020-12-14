@@ -18,6 +18,7 @@ __deboggage__ = True
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate
+from scipy.stats import wasserstein_distance
 import scipy
 # from mpl_toolkits.mplot3d import Axes3D
 # import cvxpy as cp
@@ -32,7 +33,7 @@ X = np.linspace(xgauche, xdroit, N_ech)
 
 sigma = 1e-1 # écart-type de la PSF
 lambda_regul = 8e-4 # Param de relaxation
-niveaubruits = 0 # sigma du bruit
+niveaubruits = 5e-2 # sigma du bruit
 
 
 def gaussienne(domain):
@@ -233,7 +234,7 @@ def etaWx0(x, x0, mesure, sigma, noyau='gaussien'):
     tmp = np.zeros(x.size)
     for k in range(N):
         tmp += ((x - x0)**(2*k))/((2*sigma)**(2*k)*np.math.factorial(k))
-    eta = np.exp(-(x - x0)**2/4)*tmp
+    eta = np.exp(-np.power(x - x0, 2)/4)*tmp
     return eta
 
 
@@ -250,54 +251,10 @@ m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.37,0.7])
 y = m_ax0.acquisition(niveaubruits)
 
 # certificat_V = etak(m_ax, y, regul)
-certificat_W_x0 = etaWx0(X, 0.5, m_ax0, sigma)
-plt.plot(X, certificat_W_x0)
+certificat_W = etaW(X, 3, 1e-1)
+# certificat_W_x0 = etaWx0(X, 1e-1, m_ax0, sigma)
+plt.plot(X, certificat_W)
 plt.grid()
-
-
-
-
-#%
-
-# GRAPHIQUES
-
-# # plt.plot(X, certificat_W_x0)
-# plt.figure('Dirac')
-# plt.plot(X,y, label='$y_0$')
-# plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C1--', 
-#          markerfmt='C1o', use_line_collection=True, basefmt=" ")
-# # for i in range(m_ax0.N):
-# #     plt.vlines(m_ax0.x[i], 0, m_ax0.a[i], colors='orange', linestyles='dashed')
-
-
-# plt.xlabel('$x$', fontsize=18)
-# plt.ylabel('Luminosité', fontsize=18)
-# plt.title('$m_{a_0,x_0}$ et son acquisition $y_0$', fontsize=20)
-# plt.legend()
-# # plt.grid()    
-# # plt.savefig('fig/dirac.pdf', format='pdf', dpi=1000,
-# #         bbox_inches='tight', pad_inches=0.03)
-# plt.grid()
-# plt.show()
-
-
-
-# plt.figure('Certificat')
-# # plt.scatter(m_ax.x, m_ax.a, color='orange', label='$m_{a,x}$')
-# # for i in range(m_ax.N):
-# #     plt.vlines(m_ax.x[i], 0, m_ax.a[i], colors='orange', linestyles='dashed')
-# plt.plot(X, certificat_V, 'r', label='$\eta_V$')
-# plt.stem(m_ax.x, m_ax.a, label='$m_{a,x}$', linefmt='C1:', 
-#          markerfmt='C1o', use_line_collection=True, basefmt=" ")
-# plt.axhline(y=1, color='gray', linestyle='--')
-# plt.axhline(y=-1, color='gray', linestyle='--')
-
-# plt.title('$m_{{a,x}}$ et certificat $\eta_V$',
-#           fontsize=20)
-# plt.xlabel('$x$', fontsize=18)
-# plt.ylabel(f'$\eta_V$ à $\lambda=${regul:.1e}', fontsize=18)
-# plt.grid()
-# plt.legend(loc=4)
 
 
 
@@ -375,10 +332,13 @@ if __name__ == '__main__':
     print('On a retrouvé m_ax ' + str(m_sfw))
     certificat_V = etak(m_sfw, y, lambda_regul)
     print('On voulait retrouver m_ax0 ' + str(m_ax0))
+    wasser = wasserstein_distance(m_sfw.x, m_ax0.x, m_sfw.a, m_ax0.a)
+    print(f'2-distance de Wasserstein : {wasser}')
     
     if m_sfw != 0:
         # plt.figure(figsize=(21,4))
         fig = plt.figure(figsize=(15,12))
+        
         plt.subplot(221)
         plt.plot(X,y, label='$y$', linewidth=1.7)
         plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
@@ -403,7 +363,7 @@ if __name__ == '__main__':
         plt.subplot(223)
         plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
         plt.xlabel('Itération', fontsize=18)
-        plt.ylabel('$T_\lambda$(m)', fontsize=20)
+        plt.ylabel('$T_\lambda(m)$', fontsize=20)
         plt.title('Décroissance énergie', fontsize=20)
         plt.grid()
         
@@ -421,12 +381,13 @@ def regulPath(acquis, lambda_debut, lambda_fin, nb_lambda):
         l = lambda_vecteur[i]
         (m, nrj) = SFW(acquis, regul=l, nIter=5)
         chemin[i] = m.x
-    return (chemin, lambda_vecteur)
+    return(chemin, lambda_vecteur)
 
 def tracePath(chemin, lambda_vecteur):
+    plt.figure(figsize=(10,5))
     for j in range(len(chemin)):
         l_x = lambda_vecteur[j]*np.ones(len(chemin[j]))
-        plt.scatter(l_x,chemin[j], marker='x', c='b')
+        plt.scatter(l_x,chemin[j], marker='.', c='r')
     plt.xlabel('Paramètre $\lambda$', fontsize=18)
     plt.ticklabel_format(style='sci', axis='x', scilimits=(0,0))
     plt.ylabel('$x_i$ retrouvées', fontsize=18)
@@ -435,7 +396,7 @@ def tracePath(chemin, lambda_vecteur):
     plt.grid()
 
 
-(chemin_regul, regul_vecteur) = regulPath(y, 2e-3, 4e-3, 200)
+(chemin_regul, regul_vecteur) = regulPath(y, 1e-6, 1e-3, 300)
 tracePath(chemin_regul, regul_vecteur)
 if __saveFig__ == True:
     plt.savefig('fig/regularisation-chemin.pdf', format='pdf', dpi=1000,

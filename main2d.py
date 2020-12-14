@@ -9,7 +9,7 @@ Created on Sat Dec  5 15:44:06 2020
 
 __author__ = 'Bastien Laville'
 __team__ = 'Morpheme'
-__saveFig__ = False
+__saveFig__ = True
 __saveVid__ = True
 __deboggage__ = True
 
@@ -21,6 +21,7 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy import integrate
 import scipy
+# import seaborn as sns
 
 
 np.random.seed(80)
@@ -28,7 +29,7 @@ sigma = 1e-1 # écart-type de la PSF
 # lambda_regul = 1e-3 # Param de relaxation
 niveaubruits = 1e-2 # sigma du bruit
 
-N_ech = 70
+N_ech = 30
 xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
@@ -242,14 +243,22 @@ def double_gaussienne(domain):
     return np.power(gaussienne(domain),2)
 
 
+def ideal_lowpass(domain, fc):
+    '''Passe-bas idéal de fréquence de coupure f_c'''
+    return np.sin((2*fc + 1)*np.pi*domain)/np.sin(np.pi*domain)
+
+
+
 # Le fameux algo de Sliding Frank Wolfe
 
 def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
-    '''y acquisition et nIter nombre d'itérations'''
+    '''y acquisition et nIter nombre d'itérations
+    mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
+    un vecteur qui contient mesure_k la mesure de la k-ième itération'''
     N_ech_y = len(y)
     a_k = np.empty((0,0))
     x_k = np.empty((0,0))
-    mesure_k = Mesure2D(a_k, x_k)    # Msure discrète vide
+    mesure_k = Mesure2D(a_k, x_k)    # Mesure discrète vide
     Nk = 0                      # Taille de la mesure discrète
     if mesParIter == True:
         mes_vecteur = np.array([])
@@ -298,7 +307,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
                 return(attache + parcimonie)
 
             # On met la graine au format array pour scipy...minimize
-            # Il faut en effet que ça soit un vecteur
+            # il faut en effet que ça soit un vecteur
             initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
             res = scipy.optimize.minimize(lasso_double, initial_guess,
                                           method='BFGS',
@@ -332,38 +341,40 @@ def plot_results(m):
         fig = plt.figure(figsize=(15,12))
         fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
                      f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
-        
-        
+
         plt.subplot(221)
-        plt.contourf(X, Y, y, 100, cmap='seismic')
+        cont1 = plt.contourf(X, Y, y, 100, cmap='seismic')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
         plt.colorbar();
         plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
-                    label='Hidden spikes')
+                    label='GT spikes')
         plt.scatter(m.x[:,0], m.x[:,1], marker='+',
                     label='Recovered spikes')
         plt.legend(loc=2)
-        
+
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         plt.title('Acquisition $y = \Phi m_{a_0,x_0} + w$', fontsize=20)
-        # plt.grid()
-        
+
         plt.subplot(222)
-        plt.contourf(X, Y, m.kernel(X, Y), 100, cmap='seismic')
+        cont2 = plt.contourf(X, Y, m.kernel(X, Y), 100, cmap='seismic')
+        for c in cont2.collections:
+            c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         plt.title('Reconstruction $m_{a,x}$', fontsize=20)
         plt.colorbar();
-        # sns.heatmap(m_sfw.kernel(X, Y), square=True)
-        # plt.grid()
-        
+
         plt.subplot(223)
-        plt.contourf(X, Y, certificat_V, 100, cmap='seismic')
+        cont3 = plt.contourf(X, Y, certificat_V, 100, cmap='seismic')
+        for c in cont3.collections:
+            c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         plt.title('Certificate $\eta_V$', fontsize=20)
         plt.colorbar();
-        
+
         plt.subplot(224)
         plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
         plt.xlabel('Itération', fontsize=18)
@@ -374,29 +385,14 @@ def plot_results(m):
             plt.savefig('fig/dirac-certificat-2d.pdf', format='pdf', dpi=1000,
                         bbox_inches='tight', pad_inches=0.03)
 
-# m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
-m_ax0 = mesureAleatoire(9)
-y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
-lambda_regul = 1e-5 # Param de relaxation
-iteration = 11
-# (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=iteration)
-(m_sfw, nrj_sfw, mes_sfw) = SFW(y, regul=lambda_regul, nIter=iteration,
-                                 mesParIter=True)
-print('On a retrouvé m_ax = ' + str(m_sfw))
-certificat_V = etak(m_sfw, y, X, Y, lambda_regul)
-print('On voulait retrouver m_ax0 = ' + str(m_ax0))
-plot_results(m_sfw)
-y_simul = m_sfw.kernel(X,Y)
-
-
-if __saveVid__ == True and m_sfw.a.size > 0:
+def gif_results(y, m_ax0, m_sfw, video='gif'):
     fig = plt.figure(figsize=(20, 10))
 
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
     cont = ax1.contourf(X, Y, y, 100, cmap='seismic')
-    divider = make_axes_locatable(ax1)
+    divider = make_axes_locatable(ax1) # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
     ax1.set_xlabel('X', fontsize=25)
@@ -409,16 +405,16 @@ if __saveVid__ == True and m_sfw.a.size > 0:
     divider = make_axes_locatable(ax2)
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
-    contour = ax2.contourf(X, Y, y, 100, cmap='seismic')
+    ax2.contourf(X, Y, y, 100, cmap='seismic')
     ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
                s=N_ech, label='Hidden spikes')
-    scat = ax2.scatter(mes_sfw[0].x[:,0], mes_sfw[0].x[:,1], marker='+',
+    ax2.scatter(mes_sfw[0].x[:,0], mes_sfw[0].x[:,1], marker='+',
                       s=2*N_ech, c='g', label='Recovered spikes')
     ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
-    
+
     def animate(k):
-        if k >= len(mes_sfw)-1:
+        if k >= len(mes_sfw):
             # On fige l'animation pour faire une pause à la pause
             return
         else:
@@ -427,22 +423,51 @@ if __saveVid__ == True and m_sfw.a.size > 0:
             ax2.contourf(X, Y, mes_sfw[k].kernel(X,Y), 100,
                                  cmap='seismic')
             ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
-                   s=N_ech, label='Hidden spikes')
+                   s=N_ech, label='GT spikes')
             ax2.scatter(mes_sfw[k].x[:,0], mes_sfw[k].x[:,1], marker='+',
                           s=2*N_ech, c='g', label='Recovered spikes')
-            # scat.set_offsets(np.c_[mes_sfw[k].x[:,0], mes_sfw[k].x[:,1]])
             ax2.set_xlabel('X', fontsize=25)
             ax2.set_ylabel('Y', fontsize=25)
             ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
             ax2.legend(loc=1, fontsize=20)
             plt.tight_layout()
-            
-    
+
     anim = FuncAnimation(fig, animate, interval=1000, frames=len(mes_sfw)+3,
                          blit=False)
-     
-    plt.draw()
-    # plt.show()
-    anim.save('fig/anim-sfw-2d.gif')
-    # anim.save('fig/anim.gif', writer='Pillow')
 
+    plt.draw()
+    if video == "mp4":
+        anim.save('fig/anim-sfw-2d.mp4')
+    elif video == "gif":
+        anim.save('fig/anim-sfw-2d.gif')
+    else:
+        raise ValueError('Unknown video format')
+    return fig
+
+
+# m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
+m_ax0 = mesureAleatoire(9)
+y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
+
+lambda_regul = 9e-5 # Param de relaxation
+iteration = 11
+
+# (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=iteration)
+(m_sfw, nrj_sfw, mes_sfw) = SFW(y, regul=lambda_regul, nIter=iteration,
+                                 mesParIter=True)
+print('On a retrouvé m_ax = ' + str(m_sfw))
+certificat_V = etak(m_sfw, y, X, Y, lambda_regul)
+print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+
+y_simul = m_sfw.kernel(X,Y)
+
+if __saveFig__ == True:
+    plot_results(m_sfw)
+if __saveVid__ == True and m_sfw.a.size > 0:
+    gif_results(y, m_ax0, m_sfw)
+
+
+# #%% Wasserstein 2D
+# # Il faudrait utiliser sliced_wasserstein
+# # Mais la dernière version n'est pas dispo
+# J'ai essayé gudhi, c'était tout sauf concluant
