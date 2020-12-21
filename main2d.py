@@ -149,6 +149,7 @@ class Mesure2D:
 
 
     def tv(self):
+        '''Renvoie 0 si la mesure est vide : hierher à vérifier'''
         try:
             return np.linalg.norm(self.a, 1)
         except ValueError:
@@ -184,12 +185,12 @@ def mesureAleatoire(N):
 def phi(m, X_domain, Y_domain):
     return m.kernel(X_domain, Y_domain)
 
+
 def phi_vecteur(a, x, X_domain, Y_domain):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
     m_tmp = Mesure2D(a, x)
     return(m_tmp.kernel(X_domain, Y_domain))
-
 
 
 def phiAdjoint(y, X_domain, Y_domain, noyau='gaussien'):

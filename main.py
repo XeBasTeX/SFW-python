@@ -373,7 +373,7 @@ if __name__ == '__main__':
             plt.savefig('fig/dirac-certificat.pdf', format='pdf', dpi=1000,
             bbox_inches='tight', pad_inches=0.03)
 
-#%%
+
 def regulPath(acquis, lambda_debut, lambda_fin, nb_lambda):
     lambda_vecteur = np.linspace(lambda_debut, lambda_fin, nb_lambda)
     chemin = [[]] * len(lambda_vecteur)
