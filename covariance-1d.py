@@ -19,29 +19,17 @@ from scipy.stats import wasserstein_distance
 import scipy
 
 
-# T_ech = 60
-# T_acquis = 30
-# T = np.linspace(0, T_acquis, T_ech)
-# N_mol = 15
-# acquis_temporelle = np.zeros((N_mol, T_ech))
-# for i in range(N_mol):
-#     phase = np.pi*np.random.rand()
-#     acquis_temporelle[i,] = np.sin(T + phase)
-#     plt.plot(acquis_temporelle[i,:])
-
-# positions_mesures = np.random.rand(1, N_mol)[0]
-# amplitudes_moyennes = 0
-
 
 np.random.seed(0)
 N_ech = 2**6 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
+X_u, X_v = np.meshgrid(X, X)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 1e-4 # Param de relaxation
-niveaubruits = 5e-2 # sigma du bruit
+lambda_regul = 1e-5 # Param de relaxation
+niveaubruits = 0e-2 # sigma du bruit
 
 
 def gaussienne(domain):
@@ -57,13 +45,6 @@ def double_gaussienne(domain):
 def ideal_lowpass(domain, fc):
     '''Passe-bas idéal de fréquence de coupure f_c'''
     return np.sin((2*fc + 1)*np.pi*domain)/np.sin(np.pi*domain)
-
-
-def covariance_pile(stack, stack_mean):
-    covar = np.zeros((len(stack), len(stack[0])))
-    for i in range(len(stack)):
-        covar += np.outer(stack - stack_mean, stack - stack_mean)
-    return covar
 
 
 class Mesure:
@@ -108,7 +89,7 @@ class Mesure:
 
     def graphe(self):
         plt.figure()
-        plt.plot(X,y, label='$y_0$')
+        plt.plot(X, self.kernel(X), label='$y_0$')
         plt.stem(self.x, self.a, label='$m_{a,x}$', linefmt='C1--', 
                   markerfmt='C1o', use_line_collection=True, basefmt=" ")
         plt.grid()
@@ -259,14 +240,50 @@ def etak(mesure, cov_acquis, regul):
     return eta
 
 
+def pile_aquisition(m):
+    '''Construit une pile d'acquisition à partir d'une mesure.'''
+    N_mol = len(m.a)
+    acquis_temporelle = np.zeros((T_ech, N_ech))
+    for t in range(T_ech):
+        a_tmp = (np.random.random(N_mol))*m.a
+        m_tmp = Mesure(a_tmp, m.x)
+        acquis_temporelle[t,:] = m_tmp.acquisition(niveaubruits)
+    return(acquis_temporelle)
+
+
+def covariance_pile(stack, stack_mean):
+    covar = np.zeros((len(stack[0]), len(stack[0])))
+    for i in range(len(stack)):
+        covar += np.outer(stack[i,:] - stack_mean, stack[i,:] - stack_mean)
+    return covar/len(stack-1)   # T-1 ou T hierher ?
+
+
 # m_ax0 = Mesure([1.3,0.8,1.4], [0.3,0.37,0.7])
-m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.37,0.7])
-y = m_ax0.acquisition(niveaubruits)
+m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.4,0.7])
+# y = m_ax0.acquisition(niveaubruits)
 
-R_y = m_ax0.covariance_kernel(X,X,X)
-X_u, X_v = np.meshgrid(X, X)
-# opadj = phiAdjoint(R_y, X_u, X_v)
+T_ech = 1000        # Il faut mettre vraiment bcp d'échantillons !
+T_acquis = 1
+T = np.linspace(0, T_acquis, T_ech)
 
+
+pile = pile_aquisition(m_ax0)   
+pile_moy = np.mean(pile, axis=0)   
+R_y = covariance_pile(pile, pile_moy)
+R_x = m_ax0.covariance_kernel(X,X,X)
+
+plt.figure(figsize=(25,10))
+plt.subplot(121)
+plt.imshow(R_x)
+plt.colorbar()
+plt.title('$R_x$', fontsize=60)
+plt.subplot(122)
+plt.imshow(R_y)
+plt.colorbar()
+plt.title('$R_y$', fontsize=60)
+
+
+#%%
 
 def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
     '''y acquisition et nIter nombre d'itérations
@@ -359,20 +376,20 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
 
 
 if __name__ == '__main__' and True==1:
-    (m_sfw, nrj_sfw) = SFW(R_y, regul=lambda_regul, nIter=4)
+    (m_sfw, nrj_sfw) = SFW(R_y, regul=lambda_regul, nIter=5)
     print('On a retrouvé m_ax, ' + str(m_sfw))
     certificat_V = etak(m_sfw, R_y, lambda_regul)
     print('On voulait retrouver m_ax0, ' + str(m_ax0))
     
     if m_sfw.a.size > 0:
         wasser = wasserstein_distance(m_sfw.x, m_ax0.x, m_sfw.a, m_ax0.a)
-        print(f'2-distance de Wasserstein : {wasser}')
+        print(f'2-distance de Wasserstein : W_2(m_sfw,m_ax0) = {wasser}')
     
         # plt.figure(figsize=(21,4))
         fig = plt.figure(figsize=(15,12))
         
         plt.subplot(221)
-        plt.plot(X,y, label='$y$', linewidth=1.7)
+        plt.plot(X,pile_moy, label='$\overline{y}$', linewidth=1.7)
         plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
                   markerfmt='C1o', use_line_collection=True, basefmt=" ")
         plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
@@ -406,7 +423,7 @@ if __name__ == '__main__' and True==1:
         m_sfw.torus(current_fig=fig, subplot=True)
         
         if __saveFig__ == True:
-            plt.savefig('fig/covar-certificat.pdf', format='pdf', dpi=1000,
+            plt.savefig('fig/covar-certificat-1d.pdf', format='pdf', dpi=1000,
             bbox_inches='tight', pad_inches=0.03)
 
 
