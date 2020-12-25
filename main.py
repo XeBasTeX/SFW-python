@@ -26,7 +26,7 @@ import scipy
 
 
 # np.random.seed(0)
-N_ech = 100 # Taux d'échantillonnage
+N_ech = 2**6 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
@@ -195,18 +195,16 @@ def mesureAleatoire(N):
     a = (np.round(np.random.rand(1,N), 2)).tolist()[0]
     return Mesure(a, x)
 
-# m = Mesure([1,1.1,0,1.5],[2,88,3,8])
-# print(m.prune())
 
 def phi(m, domain):
     return m.kernel(domain)
+
 
 def phi_vecteur(a, x, domain):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
     m_tmp = Mesure(a, x)
     return(m_tmp.kernel(domain))
-
 
 
 def phiAdjoint(y, domain, noyau='gaussien'):
@@ -396,9 +394,10 @@ def tracePath(chemin, lambda_vecteur):
     plt.grid()
 
 
-(chemin_regul, regul_vecteur) = regulPath(y, 1e-6, 1e-3, 300)
-tracePath(chemin_regul, regul_vecteur)
-if __saveFig__ == True:
-    plt.savefig('fig/regularisation-chemin.pdf', format='pdf', dpi=1000,
-    bbox_inches='tight', pad_inches=0.03)
+# Hierher recommenter pour obtenir le tracé de régul
+# (chemin_regul, regul_vecteur) = regulPath(y, 1e-6, 1e-3, 300)
+# tracePath(chemin_regul, regul_vecteur)
+# if __saveFig__ == True:
+#     plt.savefig('fig/regularisation-chemin.pdf', format='pdf', dpi=1000,
+#     bbox_inches='tight', pad_inches=0.03)
 

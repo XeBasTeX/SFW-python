@@ -8,7 +8,7 @@ Created on Mon Dec 21 21:57:58 2020
 
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
-__saveFig__ = True
+__saveFig__ = False
 __deboggage__ = True
 
 
@@ -28,8 +28,9 @@ X = np.linspace(xgauche, xdroit, N_ech)
 X_u, X_v = np.meshgrid(X, X)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 1e-5 # Param de relaxation
-niveaubruits = 0e-2 # sigma du bruit
+lambda_regul = 2.5e-5 # Param de relaxation pour SFW R_y
+lambda_regul2 = 2e-3 # Param de relaxation pour SFW y_moy
+niveaubruits = 1e-1 # sigma du bruit
 
 
 def gaussienne(domain):
@@ -171,10 +172,17 @@ class Mesure:
         return np.linalg.norm(self.a, 1)
 
 
-    def energie(self, X, r_acquis, regul):
-        attache = 0.5*np.linalg.norm(r_acquis - self.covariance_kernel(X,X,X))
-        parcimonie = regul*self.tv()
-        return(attache + parcimonie)
+    def energie(self, X, acquis, regul, obj='covar'):
+        if obj == 'covar':
+            attache = 0.5*np.linalg.norm(acquis - self.covariance_kernel(X,X,X))
+            parcimonie = regul*self.tv()
+            return(attache + parcimonie)
+        elif obj == 'acquis':
+            attache = 0.5*np.linalg.norm(acquis - self.kernel(X))
+            parcimonie = regul*self.tv()
+            return(attache + parcimonie)
+        else:
+            raise TypeError
 
 
     def prune(self, tol=1e-3):
@@ -211,32 +219,79 @@ def mesureAleatoire(N):
     return Mesure(a, x)
 
 
-def phi(m, domain):
+def torus(ax, m, titre, couleur):
+        theta = np.linspace(0, 2*np.pi, N_ech)
+        y_torus = np.sin(theta)
+        x_torus = np.cos(theta)
+
+        a_x_torus = np.sin(2*np.pi*np.array(m.x))
+        a_y_torus = np.cos(2*np.pi*np.array(m.x))
+        a_z_torus = m.a
+
+        # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
+        ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
+        ax.plot(a_x_torus,a_y_torus, a_z_torus,
+                'o', label=titre, color=couleur)
+
+        for i in range(m.N):
+            ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
+                    (0,a_z_torus[i]), '--r', color=couleur)
+
+        ax.set_xlabel('$X$')
+        ax.set_ylabel('$Y$')
+        ax.set_zlabel('$Amplitude$')
+        ax.set_title('Mesure sur $\mathbb{S}_1$', fontsize=20)
+        ax.legend()
+        return 
+
+
+def phi(m, domain, obj='covar'):
     '''Opérateur \Lambda de somulation de la covariance'''
-    return m.covariance_kernel(domain, domain, domain)
+    if obj == 'covar':
+        return m.covariance_kernel(domain, domain, domain)
+    elif obj == 'acquis':
+        return m.kernel(domain)
+    else:
+        raise TypeError
 
 
-def phi_vecteur(a, x, domain):
+def phi_vecteur(a, x, domain, obj='covar'):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
-    m_tmp = Mesure(a, x)
-    return(m_tmp.covariance_kernel(domain, domain, domain))
+    if obj == 'covar':
+        m_tmp = Mesure(a, x)
+        return(m_tmp.covariance_kernel(domain, domain, domain))
+    elif obj == 'acquis':
+        m_tmp = Mesure(a, x)
+        return(m_tmp.kernel(domain))
+    else:
+        raise TypeError
 
 
-def phiAdjoint(cov_acquis, u_domain, v_domain, noyau='gaussien'):
+def phiAdjoint(cov_acquis, domain, obj='covar'):
     taille_y = len(cov_acquis)
-    eta = np.empty(np.shape(cov_acquis))
-    for i in range(taille_y):
-        for j in range(taille_y):
-            x_decal = u_domain[i,j]
-            y_decal = v_domain[i,j]
-            D_decal = np.sqrt(np.power(x_decal-u_domain,2) + np.power(y_decal-v_domain,2))
-            integ_x = integrate.simps(cov_acquis*gaussienne(D_decal), x=X)
-            eta[i,j] = integrate.simps(integ_x, x=X)
-    return eta
+    if obj == 'covar':
+        eta = np.empty(taille_y)
+        for i in range(taille_y):
+            x_decal = domain[i]
+            integ_x = integrate.simps(cov_acquis*gaussienne(x_decal - domain),
+                                      x=domain)
+            eta[i] = integrate.simps(integ_x, x=domain) # Deux intégrations car eta 
+                                                    # \in C(X,R) 
+        return eta
+    if obj == 'acquis':
+        eta = np.empty(taille_y)
+        for i in range(taille_y):
+            x = domain[i]
+            eta[i] = integrate.simps(cov_acquis*gaussienne(x-domain),x=domain)
+        return eta
+    else:
+        raise TypeError
 
-def etak(mesure, cov_acquis, regul):
-    eta = 1/regul*phiAdjoint(cov_acquis - phi(mesure, X), X_u, X_v)
+
+def etak(mesure, cov_acquis, regul, obj='covar'):
+    eta = 1/regul*phiAdjoint(cov_acquis - phi(mesure, X, obj),
+                             X, obj)
     return eta
 
 
@@ -262,30 +317,33 @@ def covariance_pile(stack, stack_mean):
 m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.4,0.7])
 # y = m_ax0.acquisition(niveaubruits)
 
-T_ech = 1000        # Il faut mettre vraiment bcp d'échantillons !
+T_ech = 500        # Il faut mettre vraiment bcp d'échantillons !
 T_acquis = 1
 T = np.linspace(0, T_acquis, T_ech)
 
-
 pile = pile_aquisition(m_ax0)   
-pile_moy = np.mean(pile, axis=0)   
+pile_moy = np.mean(pile, axis=0) 
+y = pile_moy  
 R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(X,X,X)
 
-plt.figure(figsize=(25,10))
+
+plt.figure(figsize=(15,5))
 plt.subplot(121)
 plt.imshow(R_x)
 plt.colorbar()
-plt.title('$R_x$', fontsize=60)
+plt.title('$R_x$', fontsize=40)
 plt.subplot(122)
 plt.imshow(R_y)
 plt.colorbar()
-plt.title('$R_y$', fontsize=60)
+plt.title('$R_y$', fontsize=40)
+if __saveFig__ == True:
+    plt.savefig('fig/R_x-R_y-1d.pdf', format='pdf', dpi=1000,
+                bbox_inches='tight', pad_inches=0.03)
 
 
-#%%
 
-def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
+def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     '''y acquisition et nIter nombre d'itérations
     mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
     un vecteur qui contient mesure_k la mesure de la k-ième itération'''
@@ -299,7 +357,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
     nrj_vecteur = np.zeros(nIter)
     for k in range(nIter):
         print('\n' + 'Étape numéro ' + str(k))
-        eta_V_k = etak(mesure_k, R_y, regul)
+        eta_V_k = etak(mesure_k, acquis, regul, obj)
         x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None),
                                         eta_V_k.shape)
         x_star = np.array(x_star_index)/N_ech_y # hierher passer de l'idx à xstar
@@ -307,7 +365,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
         
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
-            nrj_vecteur[k] = mesure_k.energie(X, R_y, regul)
+            nrj_vecteur[k:] = mesure_k.energie(X, acquis, regul, obj)
             print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
             if mesParIter == True:
@@ -325,20 +383,22 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
 
             # On résout LASSO (étape 7)
             def lasso(a):
-                attache = 0.5*np.linalg.norm(R_y - phi_vecteur(a,x_k_demi,X))
+                attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a, x_k_demi, 
+                                                                  X, obj))
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
             res = scipy.optimize.minimize(lasso, np.ones(Nk+1))
             a_k_demi = res.x
             print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
-            mesure_k_demi += Mesure(a_k_demi,x_k_demi)
+            mesure_k_demi += Mesure(a_k_demi, x_k_demi)
             print('* Mesure_k_demi : ' +  str(mesure_k_demi))
 
             # On résout double LASSO non-convexe (étape 8)
             def lasso_double(params):
                 a_p = params[:int(np.ceil(len(params)/2))] # Bout de code immonde, à corriger !
                 x_p = params[int(np.ceil(len(params)/2)):]
-                attache = 0.5*np.linalg.norm(R_y - phi_vecteur(a_p, x_p, X))
+                attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p,
+                                                                  X, obj))
                 parcimonie = regul*np.linalg.norm(a_p, 1)
                 return(attache + parcimonie)
 
@@ -362,7 +422,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False):
             # mesure_k.graphe()
             # attache = 0.5*np.linalg.norm(R_y - mesure_k.covariance_kernel(X, X, X))
             # nrj_vecteur[k] = attache + regul*mesure_k.tv()
-            nrj_vecteur[k] = mesure_k.energie(X, R_y, regul)
+            nrj_vecteur[k] = mesure_k.energie(X, acquis, regul, obj)
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             if mesParIter == True:
                 mes_vecteur = np.append(mes_vecteur, [mesure_k])
@@ -380,6 +440,10 @@ if __name__ == '__main__' and True==1:
     print('On a retrouvé m_ax, ' + str(m_sfw))
     certificat_V = etak(m_sfw, R_y, lambda_regul)
     print('On voulait retrouver m_ax0, ' + str(m_ax0))
+    (m_moy, nrj_moy) = SFW(y, regul=lambda_regul2, nIter=5, obj='acquis')
+    print('On a retrouvé m_ax, ' + str(m_moy))
+    certificat_V_moy = etak(m_moy, y, lambda_regul2, obj='acquis')
+    print('On voulait retrouver m_ax0, ' + str(m_ax0))
     
     if m_sfw.a.size > 0:
         wasser = wasserstein_distance(m_sfw.x, m_ax0.x, m_sfw.a, m_ax0.a)
@@ -389,25 +453,21 @@ if __name__ == '__main__' and True==1:
         fig = plt.figure(figsize=(15,12))
         
         plt.subplot(221)
-        plt.plot(X,pile_moy, label='$\overline{y}$', linewidth=1.7)
-        plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
-                  markerfmt='C1o', use_line_collection=True, basefmt=" ")
+        plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
+        plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C3--', 
+                  markerfmt='C3o', use_line_collection=True, basefmt=" ")
         plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
                   markerfmt='C2o', use_line_collection=True, basefmt=" ")
         # plt.xlabel('$x$', fontsize=18)
         plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
-        plt.title('$m_{a,x}$ contre la VT $m_{a_0,x_0}$', fontsize=20)
+        plt.title('$m_{M,x}$ contre la VT $m_{a_0,x_0}$', fontsize=20)
         plt.grid()
         plt.legend()
         
         plt.subplot(222)
-        cont = plt.contourf(X, X, certificat_V, 100, cmap='seismic')
-        for c in cont.collections:
-            c.set_edgecolor("face")
-        plt.colorbar();
-        plt.scatter(m_ax0.x, m_ax0.x, marker='x', label='True spikes')
-        plt.scatter(m_sfw.x, m_sfw.x, marker='+', label='Recovered spikes')
-        plt.legend(loc=2)
+        plt.plot(X, certificat_V, 'r', linewidth=2)
+        plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
+        plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
         # plt.xlabel('$x$', fontsize=18)
         plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
         plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
@@ -416,14 +476,59 @@ if __name__ == '__main__' and True==1:
         plt.subplot(223)
         plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
         plt.xlabel('Itération', fontsize=18)
-        plt.ylabel('$T_\lambda(m)$', fontsize=20)
+        plt.ylabel('$\mathcal{J}_\lambda(m)$', fontsize=20)
         plt.title('Décroissance énergie', fontsize=20)
         plt.grid()
         
         m_sfw.torus(current_fig=fig, subplot=True)
         
         if __saveFig__ == True:
-            plt.savefig('fig/covar-certificat-1d.pdf', format='pdf', dpi=1000,
-            bbox_inches='tight', pad_inches=0.03)
+            plt.savefig('fig/covar-moy-certificat-1d.pdf', format='pdf', 
+                        dpi=1000, bbox_inches='tight', pad_inches=0.03)
+    
+    if m_moy.a.size > 0:
+        wasser = wasserstein_distance(m_moy.x, m_ax0.x, m_moy.a, m_ax0.a)
+        print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser}')
+    
+        fig = plt.figure(figsize=(15,12))
+        
+        plt.subplot(221)
+        plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
+        plt.stem(m_moy.x, m_moy.a, label='$m_{a,x}$', linefmt='C1--', 
+                  markerfmt='C1o', use_line_collection=True, basefmt=" ")
+        plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
+                  markerfmt='C2o', use_line_collection=True, basefmt=" ")
+        plt.stem(m_sfw.x, m_sfw.a, label='$m_{M,x}$', linefmt='C1--', 
+                  markerfmt='C3o', use_line_collection=True, basefmt=" ")
+        # plt.xlabel('$x$', fontsize=18)
+        plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
+        plt.title('$m_{a,x}$ et $m_{M,x}$ contre la VT $m_{a_0,x_0}$',
+                  fontsize=20)
+        plt.grid()
+        plt.legend()
+        
+        plt.subplot(222)
+        plt.plot(X, certificat_V_moy, 'r', linewidth=2)
+        plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
+        plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
+        # plt.xlabel('$x$', fontsize=18)
+        plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
+        plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
+        plt.grid()
+        
+        plt.subplot(223)
+        plt.plot(nrj_moy, 'o--', color='black', linewidth=2.5)
+        plt.xlabel('Itération', fontsize=18)
+        plt.ylabel('$T_\lambda(m)$', fontsize=20)
+        plt.title('Décroissance énergie', fontsize=20)
+        plt.grid()
+        
+        ax = fig.add_subplot(224, projection='3d')
+        torus(ax, m_sfw, '$m_{a,x}$', 'red')
+        torus(ax, m_moy, '$m_{M,x}$', 'orange')
+        
+        if __saveFig__ == True:
+            plt.savefig('fig/covar-moy-sfw-certificat-1d.pdf', format='pdf', 
+                        dpi=1000, bbox_inches='tight', pad_inches=0.03)
 
 
