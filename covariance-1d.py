@@ -25,12 +25,11 @@ N_ech = 2**6 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
-X_u, X_v = np.meshgrid(X, X)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 2.5e-5 # Param de relaxation pour SFW R_y
-lambda_regul2 = 2e-3 # Param de relaxation pour SFW y_moy
-niveaubruits = 1e-1 # sigma du bruit
+lambda_regul = 2e-5 # Param de relaxation pour SFW R_y
+lambda_regul2 = 5e-3 # Param de relaxation pour SFW y_moy
+niveaubruits = 5e-1 # sigma du bruit
 
 
 def gaussienne(domain):
@@ -114,11 +113,11 @@ class Mesure:
         # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
         ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
         ax.plot(a_x_torus,a_y_torus, a_z_torus,
-                'o', label='$m_{a,x}$', color='orange')
+                'o', label='$m_{a,x}$', color='red')
 
         for i in range(self.N):
             ax.plot((a_x_torus[i],a_x_torus[i]),(a_y_torus[i],a_y_torus[i]),
-                    (0,a_z_torus[i]), '--r', color='orange')
+                    (0,a_z_torus[i]), '--r', color='red')
 
         ax.set_xlabel('$X$')
         ax.set_ylabel('$Y$')
@@ -174,7 +173,8 @@ class Mesure:
 
     def energie(self, X, acquis, regul, obj='covar'):
         if obj == 'covar':
-            attache = 0.5*np.linalg.norm(acquis - self.covariance_kernel(X,X,X))
+            R_simul = self.covariance_kernel(X,X,X)
+            attache = 0.5*np.linalg.norm(acquis - R_simul)
             parcimonie = regul*self.tv()
             return(attache + parcimonie)
         elif obj == 'acquis':
@@ -276,8 +276,8 @@ def phiAdjoint(cov_acquis, domain, obj='covar'):
             x_decal = domain[i]
             integ_x = integrate.simps(cov_acquis*gaussienne(x_decal - domain),
                                       x=domain)
-            eta[i] = integrate.simps(integ_x, x=domain) # Deux intégrations car eta 
-                                                    # \in C(X,R) 
+            eta[i] = integrate.simps(integ_x, x=domain) # Deux intégrations car 
+                                                        # eta \in C(X,R) 
         return eta
     if obj == 'acquis':
         eta = np.empty(taille_y)
@@ -325,7 +325,7 @@ pile = pile_aquisition(m_ax0)
 pile_moy = np.mean(pile, axis=0) 
 y = pile_moy  
 R_y = covariance_pile(pile, pile_moy)
-R_x = m_ax0.covariance_kernel(X,X,X)
+R_x = m_ax0.covariance_kernel(X, X, X)
 
 
 plt.figure(figsize=(15,5))
@@ -347,7 +347,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     '''y acquisition et nIter nombre d'itérations
     mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
     un vecteur qui contient mesure_k la mesure de la k-ième itération'''
-    N_ech_y = len(R_y)
+    N_ech_y = len(acquis)
     a_k = np.array([])
     x_k = np.array([])
     mesure_k = Mesure(a_k, x_k)    # Mesure discrète vide
@@ -496,10 +496,10 @@ if __name__ == '__main__' and True==1:
         plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
         plt.stem(m_moy.x, m_moy.a, label='$m_{a,x}$', linefmt='C1--', 
                   markerfmt='C1o', use_line_collection=True, basefmt=" ")
-        plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
-                  markerfmt='C2o', use_line_collection=True, basefmt=" ")
         plt.stem(m_sfw.x, m_sfw.a, label='$m_{M,x}$', linefmt='C1--', 
                   markerfmt='C3o', use_line_collection=True, basefmt=" ")
+        plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
+                  markerfmt='C2o', use_line_collection=True, basefmt=" ")
         # plt.xlabel('$x$', fontsize=18)
         plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
         plt.title('$m_{a,x}$ et $m_{M,x}$ contre la VT $m_{a_0,x_0}$',
@@ -530,5 +530,4 @@ if __name__ == '__main__' and True==1:
         if __saveFig__ == True:
             plt.savefig('fig/covar-moy-sfw-certificat-1d.pdf', format='pdf', 
                         dpi=1000, bbox_inches='tight', pad_inches=0.03)
-
 

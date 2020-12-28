@@ -15,12 +15,12 @@ __deboggage__ = True
 
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy import integrate
 import scipy
+
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 # import seaborn as sns
 
 
@@ -29,7 +29,7 @@ sigma = 1e-1 # écart-type de la PSF
 # lambda_regul = 1e-3 # Param de relaxation
 niveaubruits = 1e-2 # sigma du bruit
 
-N_ech = 30
+N_ech = 2**5
 xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
@@ -37,7 +37,6 @@ X, Y = np.meshgrid(X_grid, X_grid)
 
 
 class Mesure2D:
-    
     def __init__(self, amplitude=[], position=[]):
         if len(amplitude) != len(position):
             raise ValueError('Pas le même nombre')
@@ -416,7 +415,7 @@ def gif_results(y, m_ax0, m_sfw, video='gif'):
 
     def animate(k):
         if k >= len(mes_sfw):
-            # On fige l'animation pour faire une pause à la pause
+            # On fige l'animation pour faire une pause à la fin
             return
         else:
             ax2.clear()
