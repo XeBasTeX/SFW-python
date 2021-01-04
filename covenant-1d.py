@@ -27,8 +27,8 @@ xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 2e-5 # Param de relaxation pour SFW R_y
-lambda_regul2 = 5e-3 # Param de relaxation pour SFW y_moy
+lambda_regul = 5e-6 # Param de relaxation pour SFW R_y
+lambda_regul2 = 7e-3 # Param de relaxation pour SFW y_moy
 niveaubruits = 5e-1 # sigma du bruit
 
 
@@ -274,8 +274,9 @@ def phiAdjoint(cov_acquis, domain, obj='covar'):
         eta = np.empty(taille_y)
         for i in range(taille_y):
             x_decal = domain[i]
-            integ_x = integrate.simps(cov_acquis*gaussienne(x_decal - domain),
-                                      x=domain)
+            noyau = gaussienne(x_decal - domain)
+            phi = np.outer(noyau,noyau)
+            integ_x = integrate.simps(cov_acquis*phi, x=domain)
             eta[i] = integrate.simps(integ_x, x=domain) # Deux intégrations car 
                                                         # eta \in C(X,R) 
         return eta
@@ -314,7 +315,7 @@ def covariance_pile(stack, stack_mean):
 
 
 # m_ax0 = Mesure([1.3,0.8,1.4], [0.3,0.37,0.7])
-m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.4,0.7])
+m_ax0 = Mesure([1.3,0.8,1.4], [0.1,0.4,0.7])
 # y = m_ax0.acquisition(niveaubruits)
 
 T_ech = 500        # Il faut mettre vraiment bcp d'échantillons !
@@ -476,58 +477,61 @@ if __name__ == '__main__' and True==1:
         plt.subplot(223)
         plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
         plt.xlabel('Itération', fontsize=18)
-        plt.ylabel('$\mathcal{J}_\lambda(m)$', fontsize=20)
-        plt.title('Décroissance énergie', fontsize=20)
+        plt.ylabel('$T_\lambda(m)$', fontsize=20)
+        plt.title('Décroissance énergie $\mathcal{Q}_\lambda(y)$', 
+                  fontsize=24)
         plt.grid()
         
         m_sfw.torus(current_fig=fig, subplot=True)
         
         if __saveFig__ == True:
-            plt.savefig('fig/covar-moy-certificat-1d.pdf', format='pdf', 
+            plt.savefig('fig/covar-certificat-1d.pdf', format='pdf', 
                         dpi=1000, bbox_inches='tight', pad_inches=0.03)
     
-    if m_moy.a.size > 0:
-        wasser = wasserstein_distance(m_moy.x, m_ax0.x, m_moy.a, m_ax0.a)
-        print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser}')
+        if m_moy.a.size > 0:
+            wasser = wasserstein_distance(m_moy.x, m_ax0.x, m_moy.a, m_ax0.a)
+            print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser}')
+        
+            fig = plt.figure(figsize=(15,12))
+            
+            plt.subplot(221)
+            plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
+            plt.stem(m_moy.x, m_moy.a, label='$m_{a,x}$', linefmt='C1--', 
+                      markerfmt='C1o', use_line_collection=True, basefmt=" ")
+            plt.stem(m_sfw.x, m_sfw.a, label='$m_{M,x}$', linefmt='C3--', 
+                      markerfmt='C3o', use_line_collection=True, basefmt=" ")
+            plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
+                      markerfmt='C2o', use_line_collection=True, basefmt=" ")
+            # plt.xlabel('$x$', fontsize=18)
+            plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
+            plt.title('$m_{a,x}$ et $m_{M,x}$ contre la VT $m_{a_0,x_0}$',
+                      fontsize=20)
+            plt.grid()
+            plt.legend()
+            
+            plt.subplot(222)
+            plt.plot(X, certificat_V_moy, 'r', linewidth=2)
+            plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
+            plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
+            # plt.xlabel('$x$', fontsize=18)
+            plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', 
+                       fontsize=18)
+            plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
+            plt.grid()
+            
+            plt.subplot(223)
+            plt.plot(nrj_moy, 'o--', color='black', linewidth=2.5)
+            plt.xlabel('Itération', fontsize=18)
+            plt.ylabel('$T_\lambda(m)$', fontsize=20)
+            plt.title('Décroissance énergie $\mathcal{P}_\lambda(\overline{y})$',
+                      fontsize=24)
+            plt.grid()
+            
+            ax = fig.add_subplot(224, projection='3d')
+            torus(ax, m_sfw, '$m_{a,x}$', 'red')
+            torus(ax, m_moy, '$m_{M,x}$', 'orange')
+            
+            if __saveFig__ == True:
+                plt.savefig('fig/covar-moy-certificat-1d.pdf', format='pdf', 
+                            dpi=1000, bbox_inches='tight', pad_inches=0.03)
     
-        fig = plt.figure(figsize=(15,12))
-        
-        plt.subplot(221)
-        plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
-        plt.stem(m_moy.x, m_moy.a, label='$m_{a,x}$', linefmt='C1--', 
-                  markerfmt='C1o', use_line_collection=True, basefmt=" ")
-        plt.stem(m_sfw.x, m_sfw.a, label='$m_{M,x}$', linefmt='C1--', 
-                  markerfmt='C3o', use_line_collection=True, basefmt=" ")
-        plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
-                  markerfmt='C2o', use_line_collection=True, basefmt=" ")
-        # plt.xlabel('$x$', fontsize=18)
-        plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
-        plt.title('$m_{a,x}$ et $m_{M,x}$ contre la VT $m_{a_0,x_0}$',
-                  fontsize=20)
-        plt.grid()
-        plt.legend()
-        
-        plt.subplot(222)
-        plt.plot(X, certificat_V_moy, 'r', linewidth=2)
-        plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
-        plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
-        # plt.xlabel('$x$', fontsize=18)
-        plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
-        plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
-        plt.grid()
-        
-        plt.subplot(223)
-        plt.plot(nrj_moy, 'o--', color='black', linewidth=2.5)
-        plt.xlabel('Itération', fontsize=18)
-        plt.ylabel('$T_\lambda(m)$', fontsize=20)
-        plt.title('Décroissance énergie', fontsize=20)
-        plt.grid()
-        
-        ax = fig.add_subplot(224, projection='3d')
-        torus(ax, m_sfw, '$m_{a,x}$', 'red')
-        torus(ax, m_moy, '$m_{M,x}$', 'orange')
-        
-        if __saveFig__ == True:
-            plt.savefig('fig/covar-moy-sfw-certificat-1d.pdf', format='pdf', 
-                        dpi=1000, bbox_inches='tight', pad_inches=0.03)
-
