@@ -9,7 +9,7 @@ Created on Mon Dec 21 21:57:58 2020
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = False
-__deboggage__ = True
+__deboggage__ = False
 
 
 import numpy as np
@@ -229,7 +229,7 @@ def torus(ax, m, titre, couleur):
         a_z_torus = m.a
 
         # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
-        ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
+        # ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
         ax.plot(a_x_torus,a_y_torus, a_z_torus,
                 'o', label=titre, color=couleur)
 
@@ -408,7 +408,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
             res = scipy.optimize.minimize(lasso_double, initial_guess,
                                           method='BFGS',
-                                          options={'disp': True})
+                                          options={'disp': __deboggage__})
             a_k_plus = res.x[:int(np.ceil(len(res.x)/2))]
             x_k_plus = res.x[int(np.ceil(len(res.x)/2)):]
 
@@ -455,7 +455,7 @@ if __name__ == '__main__' and True==1:
         
         plt.subplot(221)
         plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
-        plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C3--', 
+        plt.stem(m_sfw.x, m_sfw.a, label='$m_{M,x}$', linefmt='C3--', 
                   markerfmt='C3o', use_line_collection=True, basefmt=" ")
         plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
                   markerfmt='C2o', use_line_collection=True, basefmt=" ")
@@ -471,7 +471,7 @@ if __name__ == '__main__' and True==1:
         plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
         # plt.xlabel('$x$', fontsize=18)
         plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
-        plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
+        plt.title('Certificat $\eta_V$ de $m_{M,x}$', fontsize=20)
         plt.grid()
         
         plt.subplot(223)
@@ -528,6 +528,10 @@ if __name__ == '__main__' and True==1:
             plt.grid()
             
             ax = fig.add_subplot(224, projection='3d')
+            theta = np.linspace(0, 2*np.pi, N_ech)
+            y_torus = np.sin(theta)
+            x_torus = np.cos(theta)
+            ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
             torus(ax, m_sfw, '$m_{a,x}$', 'red')
             torus(ax, m_moy, '$m_{M,x}$', 'orange')
             

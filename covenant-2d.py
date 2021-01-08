@@ -9,8 +9,8 @@ Created on Sat Dec 26 10:34:43 2020
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = False
-__saveVid__ = False
-__deboggage__ = True
+__saveVid__ = True
+__deboggage__ = False
 
 
 import numpy as np
@@ -30,19 +30,20 @@ X_grid = np.linspace(xgauche, xdroit, N_ech)
 X, Y = np.meshgrid(X_grid, X_grid)
 
 sigma = 1e-1 # écart-type de la PSF
-niveaubruits = 1e0 # sigma du bruit
+niveaubruits = 0.3e0 # sigma du bruit
 
 
-def gaussienne(domain, sigma=sigma):
+def gaussienne(domain, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
-    return np.sqrt(2*np.pi*sigma**2)*np.exp(-np.power(domain,2)/(2*sigma**2))
+    expo = np.exp(-np.power(domain,2)/(2*sigma_g**2))
+    return np.sqrt(2*np.pi*sigma_g**2) * expo
 
 
-def gaussienne2D(X_domain, Y_domain, sigma=sigma):
+def gaussienne2D(X_domain, Y_domain, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
-    expo = np.exp(-(np.power(X_domain,2) + 
-                    np.power(Y_domain,2))/(2*sigma**2))
-    normalis = np.sqrt(2*np.pi*sigma**2)
+    expo = np.exp(-(np.power(X_domain,2) +
+                    np.power(Y_domain,2))/(2*sigma_g**2))
+    normalis = np.sqrt(2*np.pi*sigma_g**2)
     return normalis*expo
 
 
@@ -65,8 +66,8 @@ class Mesure2D:
 
 
     def __add__(self, m):
-        '''Hieher : il faut encore régler laddition pour les mesures au même'''
-        '''position, ça vaudrait le coup de virer les duplicats'''
+        '''Hieher : il faut encore régler laddition pour les mesures au même
+        position, ça vaudrait le coup de virer les duplicats'''
         a_new = np.append(self.a, m.a)
         x_new = np.array(list(self.x) + list(m.x))
         return Mesure2D(a_new, x_new)
@@ -75,7 +76,7 @@ class Mesure2D:
     def __eq__(self, m):
         if m == 0 and (self.a == [] and self.x == []):
             return True
-        elif isinstance(m, self.__class__):
+        if isinstance(m, self.__class__):
             return self.__dict__ == m.__dict__
         else:
             return False
@@ -102,6 +103,8 @@ class Mesure2D:
                 D = np.sqrt(np.power(X_domain - x[i,0],2) + np.power(Y_domain - x[i,1],2))
                 acquis += a[i]*gaussienne(D)
             return acquis
+        elif noyau == 'laplace':
+            raise TypeError("Pas implémenté")
         else:
             raise NameError("Unknown kernel")
 
@@ -120,8 +123,8 @@ class Mesure2D:
         return acquis
 
 
-    def acquisition(self, X_domain, Y_domain, N_ech, nv):
-        w = nv*np.random.random_sample((N_ech, N_ech))
+    def acquisition(self, X_domain, Y_domain, echantillo, nv):
+        w = nv*np.random.random_sample((echantillo, echantillo))
         acquis = self.kernel(X_domain, Y_domain, noyau='gaussien') + w
         return acquis
 
@@ -133,20 +136,20 @@ class Mesure2D:
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         plt.title('Acquisition y', fontsize=18)
-        plt.colorbar();
+        plt.colorbar()
         plt.grid()
         plt.show()
         return
 
 
-    def torus(self, X, current_fig=False, subplot=False):
-        N_ech = len(X)
+    def torus(self, X_domain, current_fig=False, subplot=False):
+        echantillo = len(X_domain)
         if subplot == True:
             ax = current_fig.add_subplot(224, projection='3d')
         else:
             current_fig = plt.figure()
             ax = current_fig.add_subplot(111, projection='3d')
-        theta = np.linspace(0, 2*np.pi, N_ech)
+        theta = np.linspace(0, 2*np.pi, echantillo)
         y_torus = np.sin(theta)
         x_torus = np.cos(theta)
 
@@ -155,9 +158,9 @@ class Mesure2D:
         a_z_torus = self.a
 
         # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
-        ax.plot(x_torus,y_torus, 0, '-k', label='$\mathbb{S}_1$')
+        ax.plot(x_torus,y_torus, 0, '-k', label=r'$\mathbb{S}_1$')
         ax.plot(a_x_torus,a_y_torus, a_z_torus,
-                'o', label='$m_{a,x}$', color='orange')
+                'o', label=r'$m_{a,x}$', color='orange')
 
         for i in range(self.N):
             ax.plot((a_x_torus[i],a_x_torus[i]), (a_y_torus[i],a_y_torus[i]),
@@ -166,7 +169,7 @@ class Mesure2D:
         ax.set_xlabel('$X$')
         ax.set_ylabel('$Y$')
         ax.set_zlabel('$Amplitude$')
-        ax.set_title('Mesure sur $\mathbb{S}_1$', fontsize=20)
+        ax.set_title(r'Mesure sur $\mathbb{S}_1$', fontsize=20)
         ax.legend()
         return 
 
@@ -185,12 +188,11 @@ class Mesure2D:
             attache = 0.5*np.linalg.norm(acquis - R_nrj)
             parcimonie = regul*self.tv()
             return(attache + parcimonie)
-        elif obj == 'acquis':
+        if obj == 'acquis':
             attache = 0.5*np.linalg.norm(acquis - self.kernel(X_domain, Y_domain))
             parcimonie = regul*self.tv()
             return(attache + parcimonie)
-        else:
-            raise TypeError
+        raise TypeError
 
 
     def prune(self, tol=1e-3):
@@ -216,10 +218,9 @@ def mesureAleatoire(N):
 def phi(m, X_domain, Y_domain, obj='covar'):
     if obj == 'covar':
         return m.covariance_kernel(X_domain, Y_domain)
-    elif obj == 'acquis':
+    if obj == 'acquis':
         return m.kernel(X_domain, Y_domain)
-    else:
-        raise TypeError
+    raise TypeError
 
 
 def phi_vecteur(a, x, X_domain, Y_domain, obj='covar'):
@@ -228,11 +229,10 @@ def phi_vecteur(a, x, X_domain, Y_domain, obj='covar'):
     if obj == 'covar':
         m_tmp = Mesure2D(a, x)
         return(m_tmp.covariance_kernel(X_domain, Y_domain))
-    elif obj == 'acquis':
+    if obj == 'acquis':
         m_tmp = Mesure2D(a, x)
         return(m_tmp.kernel(X_domain, Y_domain))
-    else:
-        raise TypeError
+    raise TypeError
 
 
 def phiAdjoint(acquis, X_domain, Y_domain, obj='covar'):
@@ -276,7 +276,7 @@ def pile_aquisition(m):
     N_mol = len(m.a)
     acquis_temporelle = np.zeros((T_ech, N_ech, N_ech))
     for t in range(T_ech):
-        a_tmp = (np.random.random(N_mol))*m.a
+        a_tmp = (np.random.rand(N_mol))*m.a
         m_tmp = Mesure2D(a_tmp, m.x)
         acquis_temporelle[t,:] = m_tmp.acquisition(X,Y,N_ech,niveaubruits)
     return(acquis_temporelle)
@@ -329,8 +329,8 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         eta_V_k = etak(mesure_k, acquis, X, Y, regul, obj)
         x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None), 
                                         eta_V_k.shape)
-        x_star = np.array(x_star_index)/N_ech_y # hierher passer de l'idx à xstar
-        print(f'* x^* index {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
+        x_star = np.array(x_star_index)[::-1]/N_ech_y # hierher passer de l'idx à xstar
+        print(fr'* x^* index {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
         
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
@@ -339,86 +339,90 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             print("\n\n---- Condition d'arrêt ----")
             if mesParIter == True:
                 return(mesure_k, nrj_vecteur, mes_vecteur)
-            else:
-                return(mesure_k, nrj_vecteur)
+            return(mesure_k, nrj_vecteur)
+
+        # Création du x positions estimées
+        mesure_k_demi = Mesure2D()
+        if x_k.size == 0:
+            x_k_demi = np.vstack([x_star])
+            lasso_guess = np.ones(Nk+1)
         else:
-            mesure_k_demi = Mesure2D()
-            if x_k.size == 0:
-                x_k_demi = np.vstack([x_star])
-                lasso_guess = np.ones(Nk+1)
-            else:
-                x_k_demi = np.vstack([x_k, x_star])
-                lasso_guess = np.concatenate((a_k, [1.0]))
+            x_k_demi = np.vstack([x_k, x_star])
+            lasso_guess = np.concatenate((a_k, [1.0]))
 
-            # On résout LASSO (étape 7)
-            def lasso(a):
-                attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a,
-                                                                  x_k_demi,
-                                                                  X, Y, obj))
-                parcimonie = regul*np.linalg.norm(a, 1)
-                return(attache + parcimonie)
-            # lasso_guess = np.ones(Nk+1)
-            res = scipy.optimize.minimize(lasso, lasso_guess,
-                                          options={'disp': False})
-            a_k_demi = res.x
-            # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
-            print('* a_k_demi : ' + str(a_k_demi))
-            mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
-            # print('* Mesure_k_demi : ' +  str(mesure_k_demi))
+        # On résout LASSO (étape 7)
+        def lasso(aa):
+            # m_tmp = Mesure2D(aa, x_k_demi)
+            # difference = acquis - m_tmp.covariance_kernel(X,Y)
+            difference = acquis - phi_vecteur(aa, x_k_demi, X, Y, obj)
+            attache = 0.5*np.linalg.norm(difference)
+            parcimonie = regul*np.linalg.norm(aa, 1)
+            return(attache + parcimonie)
+        # lasso_guess = np.ones(Nk+1)
+        res = scipy.optimize.minimize(lasso, lasso_guess,
+                                      options={'disp': __deboggage__})
+        a_k_demi = res.x
+        # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
+        print('* x_k_demi : ' + str(x_k_demi))
+        print('* a_k_demi : ' + str(a_k_demi))
+        mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
+        # print('* Mesure_k_demi : ' +  str(mesure_k_demi))
 
-            # On résout double LASSO non-convexe (étape 8)
-            def lasso_double(params):
-                a_p = params[:int(len(params)/3)] # Bout de code immonde, à corriger !
-                x_p = params[int(len(params)/3):]
-                x_p = x_p.reshape((len(a_p), 2))
-                attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p,x_p,
-                                                                  X,Y,obj))
-                parcimonie = regul*np.linalg.norm(a_p, 1)
-                return(attache + parcimonie)
+        # On résout double LASSO non-convexe (étape 8)
+        def lasso_double(params):
+            a_p = params[:int(len(params)/3)] # Bout de code immonde, à corriger !
+            x_p = params[int(len(params)/3):]
+            x_p = x_p.reshape((len(a_p), 2))
+            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p,x_p,
+                                                              X,Y,obj))
+            parcimonie = regul*np.linalg.norm(a_p, 1)
+            return(attache + parcimonie)
 
-            # On met la graine au format array pour scipy...minimize
-            # il faut en effet que ça soit un vecteur
-            initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-            res = scipy.optimize.minimize(lasso_double, initial_guess,
-                                          method='BFGS',
-                                          options={'disp': __deboggage__})
-            a_k_plus = (res.x[:int(len(res.x)/3)])
-            x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
-            print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
-            print('* x_k_plus : ' +  str(x_k_plus))
+        # On met la graine au format array pour scipy...minimize
+        # il faut en effet que ça soit un vecteur
+        initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
+        res = scipy.optimize.minimize(lasso_double, initial_guess,
+                                      method='BFGS',
+                                      options={'disp': __deboggage__})
+        a_k_plus = (res.x[:int(len(res.x)/3)])
+        x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
+        print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
+        print('* x_k_plus : ' +  str(x_k_plus))
 
-            # Mise à jour des paramètres avec retrait des Dirac nuls
-            mesure_k = Mesure2D(a_k_plus, x_k_plus)
-            mesure_k = mesure_k.prune(tol=1e-3)
-            a_k = mesure_k.a
-            x_k = mesure_k.x
-            Nk = mesure_k.N
+        # Mise à jour des paramètres avec retrait des Dirac nuls
+        mesure_k = Mesure2D(a_k_plus, x_k_plus)
+        mesure_k = mesure_k.prune(tol=1e-3)
+        a_k = mesure_k.a
+        x_k = mesure_k.x
+        Nk = mesure_k.N
 
-            # Graphe et énergie
-            # mesure_k.graphe()
-            nrj_vecteur[k] = mesure_k.energie(X, Y, acquis, regul, obj)
-            print(f'* Energie : {nrj_vecteur[k]:.3f}')
-            if mesParIter == True:
-                mes_vecteur = np.append(mes_vecteur, [mesure_k])
-            
+        # Graphe et énergie
+        # mesure_k.graphe()
+        nrj_vecteur[k] = mesure_k.energie(X, Y, acquis, regul, obj)
+        print(f'* Energie : {nrj_vecteur[k]:.3f}')
+        if mesParIter == True:
+            mes_vecteur = np.append(mes_vecteur, [mesure_k])
+
+    # Fin des itérations
     print("\n\n---- Fin de la boucle ----")
     if mesParIter == True:
         return(mesure_k, nrj_vecteur, mes_vecteur)
-    else:
-        return(mesure_k, nrj_vecteur)
+    return(mesure_k, nrj_vecteur)
 
 
-def plot_results(m, nrj, certif, title=None):
+def plot_results(m, nrj, certif, title=None, obj='covar'):
     if m.a.size > 0:
-        fig = plt.figure(figsize=(15,12))
-        fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
-                     f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
+        # fig = plt.figure(figsize=(15,12))
+        fig = plt.figure(figsize=(13,10))
+        fig.suptitle(fr'Reconstruction N = {m.N} ' + 
+                     fr'pour $\lambda = {lambda_regul:.0e}$ ' + 
+                     fr'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
 
         plt.subplot(221)
         cont1 = plt.contourf(X, Y, y, 100, cmap='seismic')
         for c in cont1.collections:
             c.set_edgecolor("face")
-        plt.colorbar();
+        plt.colorbar()
         plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
                     label='GT spikes')
         plt.scatter(m.x[:,0], m.x[:,1], marker='+',
@@ -427,7 +431,7 @@ def plot_results(m, nrj, certif, title=None):
 
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title('Temporal mean $\overline{y}$', fontsize=20)
+        plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
 
         plt.subplot(222)
         cont2 = plt.contourf(X, Y, m.kernel(X, Y), 100, cmap='seismic')
@@ -435,8 +439,11 @@ def plot_results(m, nrj, certif, title=None):
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title('Reconstruction $m_{a,x}$', fontsize=20)
-        plt.colorbar();
+        if obj == 'covar':
+            plt.title(r'Reconstruction $m_{M,x}$', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'Reconstruction $m_{a,x}$', fontsize=20)
+        plt.colorbar()
 
         plt.subplot(223)
         # plt.pcolormesh(X, Y, certificat_V, shading='gouraud', cmap='seismic')
@@ -445,14 +452,18 @@ def plot_results(m, nrj, certif, title=None):
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title('Certificate $\eta_V$', fontsize=20)
-        plt.colorbar();
+        plt.title(r'Certificate $\eta_V$', fontsize=20)
+        plt.colorbar()
 
         plt.subplot(224)
         plt.plot(nrj, 'o--', color='black', linewidth=2.5)
         plt.xlabel('Itération', fontsize=18)
-        plt.ylabel('$T_\lambda(m)$', fontsize=20)
-        plt.title('BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
+        plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
+        if obj == 'covar':
+            plt.title(r'BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'BLASSO energy $\mathcal{P}_\lambda(\overline{y})$',
+                      fontsize=20)
         plt.grid()
         
         if title == None:
@@ -513,7 +524,7 @@ def gif_pile(pile_acquis, m_zer, video='gif', title=None):
         raise ValueError('Unknown video format')
     return fig
 
-def gif_results(acquis, m_ax0, m_cov, video='gif', title=None):
+def gif_results(acquis, m_zer, m_list, video='gif', title=None):
     fig = plt.figure(figsize=(20, 10))
 
     ax1 = fig.add_subplot(121)
@@ -524,7 +535,7 @@ def gif_results(acquis, m_ax0, m_cov, video='gif', title=None):
     fig.colorbar(cont, cax=cax)
     ax1.set_xlabel('X', fontsize=25)
     ax1.set_ylabel('Y', fontsize=25)
-    ax1.set_title('Moyenne $\overline{y}$', fontsize=35)
+    ax1.set_title(r'Moyenne $\overline{y}$', fontsize=35)
 
     ax2 = fig.add_subplot(122)
     # ax2.set(xlim=(0, 1), ylim=(0, 1))
@@ -533,25 +544,25 @@ def gif_results(acquis, m_ax0, m_cov, video='gif', title=None):
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
     ax2.contourf(X, Y, acquis, 100, cmap='seismic')
-    ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+    ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
                s=N_ech, label='Hidden spikes')
-    ax2.scatter(mes_cov[0].x[:,0], mes_cov[0].x[:,1], marker='+',
+    ax2.scatter(m_list[0].x[:,0], m_list[0].x[:,1], marker='+',
                       s=2*N_ech, c='g', label='Recovered spikes')
     ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
 
     def animate(k):
-        if k >= len(mes_cov):
+        if k >= len(m_list):
             # On fige l'animation pour faire une pause à la pause
             return
         else:
             ax2.clear()
             ax2.set_aspect('equal', adjustable='box')
-            ax2.contourf(X, Y, mes_cov[k].kernel(X,Y), 100,
+            ax2.contourf(X, Y, m_list[k].kernel(X,Y), 100,
                                  cmap='seismic')
-            ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+            ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
                    s=N_ech, label='GT spikes')
-            ax2.scatter(mes_cov[k].x[:,0], mes_cov[k].x[:,1], marker='+',
+            ax2.scatter(m_list[k].x[:,0], m_list[k].x[:,1], marker='+',
                           s=2*N_ech, c='g', label='Recovered spikes')
             ax2.set_xlabel('X', fontsize=25)
             ax2.set_ylabel('Y', fontsize=25)
@@ -559,7 +570,7 @@ def gif_results(acquis, m_ax0, m_cov, video='gif', title=None):
             ax2.legend(loc=1, fontsize=20)
             plt.tight_layout()
 
-    anim = FuncAnimation(fig, animate, interval=1000, frames=len(mes_cov)+3,
+    anim = FuncAnimation(fig, animate, interval=1000, frames=len(m_list)+3,
                          blit=False)
 
     plt.draw()
@@ -580,12 +591,11 @@ def gif_results(acquis, m_ax0, m_cov, video='gif', title=None):
     return fig
 
 
-# m_ax0 = Mesure2D([5,10,8],[[0.25,0.25],[0.65,0.35],[0.35,0.80]])
-m_ax0 = Mesure2D([10],[[0.65,0.35]])
-# m_ax0 = mesureAleatoire(3)
+# m_ax0 = Mesure2D([8,10,6],[[0.25,0.25],[0.45,0.35],[0.30,0.75]])
+m_ax0 = mesureAleatoire(9)
 # y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
-T_ech = 50        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
+T_ech = 500        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
 T_acquis = 1
 T = np.linspace(0, T_acquis, T_ech)
 
@@ -596,47 +606,59 @@ R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(X, Y)
 
 
-plt.figure(figsize=(15,5))
-plt.subplot(121)
-plt.imshow(R_x)
-plt.colorbar()
-plt.title('$R_x$', fontsize=40)
-plt.subplot(122)
-plt.imshow(R_y)
-plt.colorbar()
-plt.title('$R_y$', fontsize=40)
-if __saveFig__ == True:
-    plt.savefig('fig/R_x-R_y-2d.pdf', format='pdf', dpi=1000,
-                bbox_inches='tight', pad_inches=0.03)
+# plt.figure(figsize=(12,4))
+# plt.subplot(121)
+# plt.imshow(R_x)
+# plt.colorbar()
+# plt.title(r'$\Lambda(m_{a_0,x_0})$', fontsize=40)
+# plt.subplot(122)
+# plt.imshow(R_y)
+# plt.colorbar()
+# plt.title('$R_y$', fontsize=40)
+# if __saveFig__ == True:
+#     plt.savefig('fig/R_x-R_y-2d.pdf', format='pdf', dpi=1000,
+#                 bbox_inches='tight', pad_inches=0.03)
 
-#%%
-lambda_regul = 2e-5 # Param de relaxation pour SFW R_y
-lambda_regul2 = 1e-2 # Param de relaxation pour SFW y_moy
-iteration = 4
+
+lambda_regul = 7e-8 # Param de relaxation pour SFW R_y
+lambda_regul2 = 1e-3 # Param de relaxation pour SFW y_moy
+iteration = m_ax0.N + 1
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, regul=lambda_regul, nIter=iteration,
                                   mesParIter=True, obj='covar')
-# (m_moy, nrj_moy, mes_moy) = SFW(y, regul=lambda_regul2, nIter=iteration,
-#                                   mesParIter=True, obj='acquis')
+(m_moy, nrj_moy, mes_moy) = SFW(y, regul=lambda_regul2, nIter=iteration,
+                                  mesParIter=True, obj='acquis')
 
 print('On a retrouvé m_Mx = ' + str(m_cov))
 certificat_V = etak(m_cov, R_y, X, Y, lambda_regul, obj='covar')
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
-# print('On a retrouvé m_ax = ' + str(m_moy))
-# certificat_V_moy = etak(m_moy, y, X, Y, lambda_regul2, obj='acquis')
-# print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
-# y_simul = m_cov.kernel(X,Y)
+plt.figure(figsize=(12,4))
+plt.subplot(121)
+plt.imshow(m_cov.covariance_kernel(X,Y))
+plt.colorbar()
+plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
+plt.subplot(122)
+plt.imshow(R_y)
+plt.colorbar()
+plt.title('$R_y$', fontsize=40)
+
+
+print('On a retrouvé m_ax = ' + str(m_moy))
+certificat_V_moy = etak(m_moy, y, X, Y, lambda_regul2, obj='acquis')
+print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+
+y_simul = m_cov.kernel(X,Y)
 
 if m_cov.a.size > 0:
     plot_results(m_cov, nrj_cov, certificat_V)
-# if m_moy.a.size > 0:
-#     plot_results(m_moy, nrj_moy, certificat_V_moy, 
-#                   title='covar-moy-certificat-2d')
-# if __saveVid__ == True:
-#     if m_cov.a.size > 0:
-#         gif_results(y, m_ax0, m_cov)
-#     gif_pile(pile, m_ax0)
+if m_moy.a.size > 0:
+    plot_results(m_moy, nrj_moy, certificat_V_moy, 
+                  title='covar-moy-certificat-2d', obj='acquis')
+if __saveVid__ == True:
+    if m_cov.a.size > 0:
+        gif_results(y, m_ax0, mes_cov)
+    gif_pile(pile, m_ax0)
 
 

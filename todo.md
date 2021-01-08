@@ -1,7 +1,8 @@
 # A faire
 ## Urgent
 
-- covariance semble mal calculée : changer les coordonnées du Dirac sur l'axe x ne modifie pas R_x ou R_y, par contre sur l'axe y il y a bien modification (déplacement le long de la diagonale de R_x)
+- covariance est bien calculée : bien vérifier comment c'est calculer par np.outer toutefois ;
+- ça optimise correctement, mais on dirait que le certificat est transposé : à vérifier.
 
 ## Dans longtemps
 
