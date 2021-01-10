@@ -9,9 +9,9 @@ Created on Sat Dec  5 15:44:06 2020
 
 __author__ = 'Bastien Laville'
 __team__ = 'Morpheme'
-__saveFig__ = True
-__saveVid__ = True
-__deboggage__ = True
+__saveFig__ = False
+__saveVid__ = False
+__deboggage__ = False
 
 
 import numpy as np
@@ -267,7 +267,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
         print('\n' + 'Étape numéro ' + str(k))
         eta_V_k = etak(mesure_k, y, X, Y, regul)
         x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None), eta_V_k.shape)
-        x_star = np.array(x_star_index)/N_ech_y # hierher passer de l'idx à xstar
+        x_star = np.array(x_star_index)[::-1]/N_ech_y # hierher passer de l'idx à xstar
         print(f'* x^* index {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
         
         # Condition d'arrêt (étape 4)

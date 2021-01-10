@@ -9,7 +9,7 @@ Created on Sat Dec 26 10:34:43 2020
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = False
-__saveVid__ = True
+__saveVid__ = False
 __deboggage__ = False
 
 
@@ -22,7 +22,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
 
-np.random.seed(80)
+# np.random.seed(80)
 N_ech = 2**4 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
@@ -30,7 +30,9 @@ X_grid = np.linspace(xgauche, xdroit, N_ech)
 X, Y = np.meshgrid(X_grid, X_grid)
 
 sigma = 1e-1 # écart-type de la PSF
-niveaubruits = 0.3e0 # sigma du bruit
+
+type_bruits = 'gauss'
+niveaubruits = 5e-1 # sigma du bruit
 
 
 def gaussienne(domain, sigma_g=sigma):
@@ -66,7 +68,7 @@ class Mesure2D:
 
 
     def __add__(self, m):
-        '''Hieher : il faut encore régler laddition pour les mesures au même
+        '''Hieher : il faut encore régler l'addition pour les mesures au même
         position, ça vaudrait le coup de virer les duplicats'''
         a_new = np.append(self.a, m.a)
         x_new = np.array(list(self.x) + list(m.x))
@@ -78,8 +80,7 @@ class Mesure2D:
             return True
         if isinstance(m, self.__class__):
             return self.__dict__ == m.__dict__
-        else:
-            return False
+        return False
 
 
     def __ne__(self, m):
@@ -89,24 +90,26 @@ class Mesure2D:
     def __str__(self):
         amplitudes = np.round(self.a, 3)
         positions = np.round(self.x, 3)
-        return(f"{self.N} Diracs \nAmplitudes : {amplitudes}\nPositions : {positions}")
+        return(f"{self.N} Diracs \nAmplitudes : {amplitudes}" + 
+               f"\nPositions : {positions}")
 
 
-    def kernel(self, X_domain, Y_domain, noyau='gaussien'):
-        '''Applique un noyau à la mesure discrète. Exemple : convol'''
+    def kernel(self, X_domain, Y_domain, noyau='gaussienne'):
+        '''Applique un noyau à la mesure discrète.
+        Pris en charge : convolution  à noyau gaussien.'''
         N = self.N
         x = self.x
         a = self.a
         acquis = X_domain*0
-        if noyau == 'gaussien':
+        if noyau == 'gaussienne':
             for i in range(0,N):
                 D = np.sqrt(np.power(X_domain - x[i,0],2) + np.power(Y_domain - x[i,1],2))
                 acquis += a[i]*gaussienne(D)
             return acquis
         elif noyau == 'laplace':
             raise TypeError("Pas implémenté")
-        else:
-            raise NameError("Unknown kernel")
+        raise NameError("Unknown kernel")
+
 
     def covariance_kernel(self, X_domain, Y_domain):
         N = self.N
@@ -123,10 +126,19 @@ class Mesure2D:
         return acquis
 
 
-    def acquisition(self, X_domain, Y_domain, echantillo, nv):
-        w = nv*np.random.random_sample((echantillo, echantillo))
-        acquis = self.kernel(X_domain, Y_domain, noyau='gaussien') + w
-        return acquis
+    def acquisition(self, X_domain, Y_domain, echantillo, nv, bruits='unif'):
+        if bruits == 'unif':
+            w = nv*np.random.random_sample((echantillo, echantillo))
+            acquis = self.kernel(X_domain, Y_domain, noyau='gaussienne') + w
+            return acquis
+        elif bruits == 'gauss':
+            w = np.random.normal(0, nv, size=(echantillo, echantillo))
+            acquis = self.kernel(X_domain, Y_domain, noyau='gaussienne') + w
+            return acquis
+        elif bruits == 'poisson':
+            w = np.random.poisson(niveaubruits, size=(echantillo,echantillo))
+            acquis = w*self.kernel(X_domain, Y_domain, noyau='gaussienne')
+        raise TypeError
 
 
     def graphe(self, X_domain, Y_domain, lvl=50):
@@ -182,17 +194,32 @@ class Mesure2D:
             return 0
 
 
-    def energie(self, X_domain, Y_domain, acquis, regul, obj='covar'):
-        if obj == 'covar':
-            R_nrj = self.covariance_kernel(X_domain, Y_domain)
-            attache = 0.5*np.linalg.norm(acquis - R_nrj)
-            parcimonie = regul*self.tv()
-            return(attache + parcimonie)
-        if obj == 'acquis':
-            attache = 0.5*np.linalg.norm(acquis - self.kernel(X_domain, Y_domain))
-            parcimonie = regul*self.tv()
-            return(attache + parcimonie)
-        raise TypeError
+    def energie(self, X_domain, Y_domain, acquis, regul, obj='covar',
+                bruits='gauss'):
+        if bruits == 'poisson':
+            if obj == 'covar':
+                R_nrj = self.covariance_kernel(X_domain, Y_domain)
+                attache = 0.5*np.linalg.norm(acquis - R_nrj)
+                parcimonie = regul*self.tv()
+                return(attache + parcimonie)
+            if obj == 'acquis':
+                simul = self.kernel(X_domain, Y_domain)
+                attache = 0.5*np.linalg.norm(acquis - simul)
+                parcimonie = regul*self.tv()
+                return(attache + parcimonie)
+        elif bruits == 'gauss' or bruits == 'unif':
+            if obj == 'covar':
+                R_nrj = self.covariance_kernel(X_domain, Y_domain)
+                attache = 0.5*np.linalg.norm(acquis - R_nrj)
+                parcimonie = regul*self.tv()
+                return(attache + parcimonie)
+            if obj == 'acquis':
+                simul = self.kernel(X_domain, Y_domain)
+                attache = 0.5*np.linalg.norm(acquis - simul)
+                parcimonie = regul*self.tv()
+                return(attache + parcimonie)
+            raise TypeError("Unknown kernel")
+        raise TypeError("Unknown noise")
 
 
     def prune(self, tol=1e-3):
@@ -208,6 +235,8 @@ class Mesure2D:
 
 
 def mesureAleatoire(N):
+    '''Créé une mesure aléatoire de N pics d'amplitudes aléatoires comprises
+    entre 0,5 et 1,5'''
     x = np.round(np.random.rand(N,2), 2)
     a = np.round(0.5 + np.random.rand(1,N), 2)[0]
     return Mesure2D(a, x)
@@ -216,6 +245,7 @@ def mesureAleatoire(N):
 # print(m.prune())
 
 def phi(m, X_domain, Y_domain, obj='covar'):
+    '''créé le résultat d'un opérateur d'acquisition à partir de la mesure m'''
     if obj == 'covar':
         return m.covariance_kernel(X_domain, Y_domain)
     if obj == 'acquis':
@@ -224,8 +254,8 @@ def phi(m, X_domain, Y_domain, obj='covar'):
 
 
 def phi_vecteur(a, x, X_domain, Y_domain, obj='covar'):
-    '''shape est un entier indiquant le taille à viser avec le 
-        padding'''
+    '''créé le résultat d'un opérateur d'acquisition à partir des vecteurs
+    a et x qui forme une mesure m_tmp'''
     if obj == 'covar':
         m_tmp = Mesure2D(a, x)
         return(m_tmp.covariance_kernel(X_domain, Y_domain))
@@ -271,18 +301,21 @@ def etak(mesure, acquis, X_domain, Y_domain, regul, obj='covar'):
     return eta
 
 
-def pile_aquisition(m):
-    '''Construit une pile d'acquisition à partir d'une mesure.'''
+def pile_aquisition(m, bruits='gauss'):
+    '''Construit une pile d'acquisition à partir d'une mesure.
+    Correspond à l'opérateur $\vartheta(\mu)$ '''
     N_mol = len(m.a)
     acquis_temporelle = np.zeros((T_ech, N_ech, N_ech))
     for t in range(T_ech):
         a_tmp = (np.random.rand(N_mol))*m.a
         m_tmp = Mesure2D(a_tmp, m.x)
-        acquis_temporelle[t,:] = m_tmp.acquisition(X,Y,N_ech,niveaubruits)
+        acquis_temporelle[t,:] = m_tmp.acquisition(X, Y, N_ech, niveaubruits,
+                                                   bruits)
     return(acquis_temporelle)
 
 
 def covariance_pile(stack, stack_mean):
+    '''Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne'''
     covar = np.zeros((len(stack[0])**2, len(stack[0])**2))
     for i in range(len(stack)):
         covar += np.outer(stack[i,:] - stack_mean, stack[i,:] - stack_mean)
@@ -314,7 +347,7 @@ def covariance_pile(stack, stack_mean):
 def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     '''y acquisition et nIter nombre d'itérations
     mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
-    un vecteur qui contient mesure_k la mesure de la k-ième itération'''
+    un vecteur qui contient les mesure_k, mesure à la k-ième itération'''
     N_ech_y = N_ech # hierher à adapter
     a_k = np.empty((0,0))
     x_k = np.empty((0,0))
@@ -330,7 +363,8 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None), 
                                         eta_V_k.shape)
         x_star = np.array(x_star_index)[::-1]/N_ech_y # hierher passer de l'idx à xstar
-        print(fr'* x^* index {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
+        print(fr'* x^* index {x_star} max ' +
+              fr'à {np.round(eta_V_k[x_star_index], 2)}')
         
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
@@ -352,26 +386,23 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
 
         # On résout LASSO (étape 7)
         def lasso(aa):
-            # m_tmp = Mesure2D(aa, x_k_demi)
-            # difference = acquis - m_tmp.covariance_kernel(X,Y)
             difference = acquis - phi_vecteur(aa, x_k_demi, X, Y, obj)
             attache = 0.5*np.linalg.norm(difference)
             parcimonie = regul*np.linalg.norm(aa, 1)
             return(attache + parcimonie)
-        # lasso_guess = np.ones(Nk+1)
         res = scipy.optimize.minimize(lasso, lasso_guess,
                                       options={'disp': __deboggage__})
         a_k_demi = res.x
-        # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
+
         print('* x_k_demi : ' + str(x_k_demi))
         print('* a_k_demi : ' + str(a_k_demi))
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
-        # print('* Mesure_k_demi : ' +  str(mesure_k_demi))
 
         # On résout double LASSO non-convexe (étape 8)
         def lasso_double(params):
-            a_p = params[:int(len(params)/3)] # Bout de code immonde, à corriger !
+            a_p = params[:int(len(params)/3)]
             x_p = params[int(len(params)/3):]
+            # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
             attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p,x_p,
                                                               X,Y,obj))
@@ -397,7 +428,6 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         Nk = mesure_k.N
 
         # Graphe et énergie
-        # mesure_k.graphe()
         nrj_vecteur[k] = mesure_k.energie(X, Y, acquis, regul, obj)
         print(f'* Energie : {nrj_vecteur[k]:.3f}')
         if mesParIter == True:
@@ -524,6 +554,7 @@ def gif_pile(pile_acquis, m_zer, video='gif', title=None):
         raise ValueError('Unknown video format')
     return fig
 
+
 def gif_results(acquis, m_zer, m_list, video='gif', title=None):
     fig = plt.figure(figsize=(20, 10))
 
@@ -591,15 +622,15 @@ def gif_results(acquis, m_zer, m_list, video='gif', title=None):
     return fig
 
 
-# m_ax0 = Mesure2D([8,10,6],[[0.25,0.25],[0.45,0.35],[0.30,0.75]])
-m_ax0 = mesureAleatoire(9)
+m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
+# m_ax0 = mesureAleatoire(9)
 # y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
-T_ech = 500        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
+T_ech = 50        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
 T_acquis = 1
 T = np.linspace(0, T_acquis, T_ech)
 
-pile = pile_aquisition(m_ax0)   
+pile = pile_aquisition(m_ax0, bruits=type_bruits)   
 pile_moy = np.mean(pile, axis=0) 
 y = pile_moy  
 R_y = covariance_pile(pile, pile_moy)
@@ -620,8 +651,18 @@ R_x = m_ax0.covariance_kernel(X, Y)
 #                 bbox_inches='tight', pad_inches=0.03)
 
 
-lambda_regul = 7e-8 # Param de relaxation pour SFW R_y
-lambda_regul2 = 1e-3 # Param de relaxation pour SFW y_moy
+# Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
+lambda_regul = 5e-6 # Param de relaxation pour SFW R_y
+lambda_regul2 = 8e-4 # Param de relaxation pour SFW y_moy
+
+# # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
+# lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
+# lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
+
+# # Pour Q_0(y_0) P_0(y_0)
+# lambda_regul = 1e-8 # Param de relaxation pour SFW R_y
+# lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
+
 iteration = m_ax0.N + 1
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, regul=lambda_regul, nIter=iteration,
@@ -632,7 +673,6 @@ iteration = m_ax0.N + 1
 print('On a retrouvé m_Mx = ' + str(m_cov))
 certificat_V = etak(m_cov, R_y, X, Y, lambda_regul, obj='covar')
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
-
 
 plt.figure(figsize=(12,4))
 plt.subplot(121)
@@ -649,16 +689,23 @@ print('On a retrouvé m_ax = ' + str(m_moy))
 certificat_V_moy = etak(m_moy, y, X, Y, lambda_regul2, obj='acquis')
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
-y_simul = m_cov.kernel(X,Y)
 
-if m_cov.a.size > 0:
-    plot_results(m_cov, nrj_cov, certificat_V)
-if m_moy.a.size > 0:
-    plot_results(m_moy, nrj_moy, certificat_V_moy, 
-                  title='covar-moy-certificat-2d', obj='acquis')
-if __saveVid__ == True:
-    if m_cov.a.size > 0:
-        gif_results(y, m_ax0, mes_cov)
-    gif_pile(pile, m_ax0)
+dist_x_cov = str(np.linalg.norm(m_ax0.x - np.sort(m_cov.x,axis=0)))
+dist_x_moy = str(np.linalg.norm(m_ax0.x - np.sort(m_moy.x,axis=0)))
+print('Dist L^2 des x de Q_\lambda : ' + dist_x_cov)
+print('Dist L^2 des x de P_\lambda : ' + dist_x_moy)
+
+
+# y_simul = m_cov.kernel(X,Y)
+
+# if m_cov.a.size > 0:
+#     plot_results(m_cov, nrj_cov, certificat_V)
+# if m_moy.a.size > 0:
+#     plot_results(m_moy, nrj_moy, certificat_V_moy, 
+#                   title='covar-moy-certificat-2d', obj='acquis')
+# if __saveVid__ == True:
+#     if m_cov.a.size > 0:
+#         gif_results(y, m_ax0, mes_cov)
+#     gif_pile(pile, m_ax0)
 
 
