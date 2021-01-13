@@ -421,7 +421,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar',
         return(mesure_k, nrj_vecteur)
 
 # m_ax0 = Mesure([1.3,0.8,1.4], [0.3,0.37,0.7])
-m_ax0 = Mesure([1.3,0.8,1.4], [0.15,0.3,0.7])
+m_ax0 = Mesure([1.4,1.1,1.6], [0.15,0.3,0.7])
 # y = m_ax0.acquisition(niveaubruits)
 
 T_ech = 500        # Il faut mettre vraiment bcp d'échantillons !
@@ -475,6 +475,9 @@ if m_cov.a.size > 0:
 
     # plt.figure(figsize=(21,4))
     fig = plt.figure(figsize=(15,12))
+    fig.suptitle(fr'Reconstruction en bruits {type_bruits} ' + 
+     fr'pour $\lambda = {lambda_regul:.0e}$ ' + 
+     fr', $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
     
     plt.subplot(221)
     plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)
@@ -516,6 +519,9 @@ if m_cov.a.size > 0:
         print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser}')
     
         fig = plt.figure(figsize=(15,12))
+        fig.suptitle(fr'Reconstruction en bruits {type_bruits} ' + 
+             fr'pour $\lambda = {lambda_regul:.0e}$ ' + 
+             fr', $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
         
         plt.subplot(221)
         plt.plot(X, pile_moy, label='$\overline{y}$', linewidth=1.7)

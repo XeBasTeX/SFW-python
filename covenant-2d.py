@@ -32,7 +32,8 @@ X, Y = np.meshgrid(X_grid, X_grid)
 sigma = 1e-1 # écart-type de la PSF
 
 type_bruits = 'gauss'
-niveaubruits = 5e-1 # sigma du bruit
+moy_gauss = 5.0
+niveaubruits = 3e-1 # sigma du bruit
 
 
 def gaussienne(domain, sigma_g=sigma):
@@ -132,7 +133,7 @@ class Mesure2D:
             acquis = self.kernel(X_domain, Y_domain, noyau='gaussienne') + w
             return acquis
         elif bruits == 'gauss':
-            w = np.random.normal(0, nv, size=(echantillo, echantillo))
+            w = np.random.normal(moy_gauss, nv, size=(echantillo, echantillo))
             acquis = self.kernel(X_domain, Y_domain, noyau='gaussienne') + w
             return acquis
         elif bruits == 'poisson':
@@ -444,7 +445,7 @@ def plot_results(m, nrj, certif, title=None, obj='covar'):
     if m.a.size > 0:
         # fig = plt.figure(figsize=(15,12))
         fig = plt.figure(figsize=(13,10))
-        fig.suptitle(fr'Reconstruction N = {m.N} ' + 
+        fig.suptitle(fr'Reconstruction en bruits {type_bruits} ' + 
                      fr'pour $\lambda = {lambda_regul:.0e}$ ' + 
                      fr'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
 
@@ -470,9 +471,11 @@ def plot_results(m, nrj, certif, title=None, obj='covar'):
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
-            plt.title(r'Reconstruction $m_{M,x}$', fontsize=20)
+            plt.title(r'Reconstruction $m_{M,x}$ ' + 
+                      f'à N = {m.N}', fontsize=20)
         elif obj == 'acquis':
-            plt.title(r'Reconstruction $m_{a,x}$', fontsize=20)
+            plt.title(r'Reconstruction $m_{a,x}$ ' + 
+                      f'à N = {m.N}', fontsize=20)
         plt.colorbar()
 
         plt.subplot(223)
@@ -505,6 +508,7 @@ def plot_results(m, nrj, certif, title=None, obj='covar'):
         if __saveFig__ == True:
             plt.savefig(title, format='pdf', dpi=1000,
                         bbox_inches='tight', pad_inches=0.03)
+
 
 def gif_pile(pile_acquis, m_zer, video='gif', title=None):
     '''Hierher à terminer de débogger'''
@@ -592,9 +596,9 @@ def gif_results(acquis, m_zer, m_list, video='gif', title=None):
             ax2.contourf(X, Y, m_list[k].kernel(X,Y), 100,
                                  cmap='seismic')
             ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-                   s=N_ech, label='GT spikes')
+                   s=4*N_ech, label='GT spikes')
             ax2.scatter(m_list[k].x[:,0], m_list[k].x[:,1], marker='+',
-                          s=2*N_ech, c='g', label='Recovered spikes')
+                          s=8*N_ech, c='g', label='Recovered spikes')
             ax2.set_xlabel('X', fontsize=25)
             ax2.set_ylabel('Y', fontsize=25)
             ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
@@ -636,24 +640,9 @@ y = pile_moy
 R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(X, Y)
 
-
-# plt.figure(figsize=(12,4))
-# plt.subplot(121)
-# plt.imshow(R_x)
-# plt.colorbar()
-# plt.title(r'$\Lambda(m_{a_0,x_0})$', fontsize=40)
-# plt.subplot(122)
-# plt.imshow(R_y)
-# plt.colorbar()
-# plt.title('$R_y$', fontsize=40)
-# if __saveFig__ == True:
-#     plt.savefig('fig/R_x-R_y-2d.pdf', format='pdf', dpi=1000,
-#                 bbox_inches='tight', pad_inches=0.03)
-
-
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
 lambda_regul = 5e-6 # Param de relaxation pour SFW R_y
-lambda_regul2 = 8e-4 # Param de relaxation pour SFW y_moy
+lambda_regul2 = 8.3e-2 # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
 # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
@@ -682,7 +671,7 @@ plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
 plt.subplot(122)
 plt.imshow(R_y)
 plt.colorbar()
-plt.title('$R_y$', fontsize=40)
+plt.title(r'$R_y$', fontsize=40)
 
 
 print('On a retrouvé m_ax = ' + str(m_moy))
@@ -690,22 +679,24 @@ certificat_V_moy = etak(m_moy, y, X, Y, lambda_regul2, obj='acquis')
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 
-dist_x_cov = str(np.linalg.norm(m_ax0.x - np.sort(m_cov.x,axis=0)))
-dist_x_moy = str(np.linalg.norm(m_ax0.x - np.sort(m_moy.x,axis=0)))
+true_pos =  np.sort(m_ax0.x, axis=0)
+dist_x_cov = str(np.linalg.norm(true_pos - np.sort(m_cov.x,axis=0)))
+dist_x_moy = str(np.linalg.norm(true_pos - np.sort(m_moy.x,axis=0)))
 print('Dist L^2 des x de Q_\lambda : ' + dist_x_cov)
 print('Dist L^2 des x de P_\lambda : ' + dist_x_moy)
 
 
-# y_simul = m_cov.kernel(X,Y)
+y_simul = m_cov.kernel(X,Y)
 
-# if m_cov.a.size > 0:
-#     plot_results(m_cov, nrj_cov, certificat_V)
-# if m_moy.a.size > 0:
-#     plot_results(m_moy, nrj_moy, certificat_V_moy, 
-#                   title='covar-moy-certificat-2d', obj='acquis')
-# if __saveVid__ == True:
-#     if m_cov.a.size > 0:
-#         gif_results(y, m_ax0, mes_cov)
-#     gif_pile(pile, m_ax0)
+if m_cov.a.size > 0:
+    plot_results(m_cov, nrj_cov, certificat_V)
+if m_moy.a.size > 0:
+    plot_results(m_moy, nrj_moy, certificat_V_moy, 
+                  title='covar-moy-certificat-2d', obj='acquis')
+
+if __saveVid__ == True:
+    gif_pile(pile, m_ax0)
+    if m_cov.a.size > 0:
+        gif_results(y, m_ax0, mes_cov)
 
 
