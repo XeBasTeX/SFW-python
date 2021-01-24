@@ -16,6 +16,7 @@ __deboggage__ = False
 import numpy as np
 from scipy import integrate
 import scipy
+import ot
 
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -481,8 +482,8 @@ def plot_results(m, dom, nrj, certif, moy, title=None, obj='covar'):
         for c in cont1.collections:
             c.set_edgecolor("face")
         plt.colorbar()
-        plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
-                    label='GT spikes')
+        # plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+        #             label='GT spikes')
         plt.scatter(m.x[:,0], m.x[:,1], marker='+',
                     label='Recovered spikes')
         plt.legend(loc=2)
@@ -652,20 +653,35 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
         raise ValueError('Unknown video format')
     return fig
 
+
+def wasserstein_metric(mes, m_zer):
+    '''Retourne la 2--distance de Wasserstein partiel (Partial Gromov-
+    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    luminosité)'''
+    M = scipy.spatial.distance.cdist(mes.x, m_zer.x)
+    p = ot.unif(mes.N)
+    q = ot.unif(m_zer.N)
+    # masse = min(np.linalg.norm(p, 1),np.linalg.norm(q, 1))
+    # en fait la masse pour les deux = 1
+    masse = 1
+    w, log = ot.partial.partial_wasserstein(p, q, M, m=masse, log=True)
+    return log['partial_w_dist']
+
+
 # Partie traitement données réelles
 
-def quadrant_divide(pile, tol=16):
-    '''Divise récursivement la partie X,Y de la pile en quadrant
+def quadrant_divide(pile):
+    '''Divise la partie X,Y de la pile en quadrant
     hierher : débugger la récursivité'''
     forme = pile[0,:].shape
-    quadrant_vecteur = pile
-    while forme[0] > 16 or forme[1] > 16:
+    if forme[0] > 16 or forme[1] > 16:
         limx = int(forme[0]/2)
         limy = int(forme[1]/2)
         quadrant_vecteur = np.array([pile[:,:limx,:limy], pile[:,:limx,limy:],
                                     pile[:,limx:,:limy], pile[:,limx:,limy:]])
-        return quadrant_divide(quadrant_vecteur, tol)
-    return quadrant_vecteur
+        return quadrant_vecteur
+    else:
+        return pile
 
 
 def recollons_un_quadrant(quadrant):
@@ -678,7 +694,17 @@ def recollons_un_quadrant(quadrant):
         pile[t,:] = stack_lin
     return pile
 
-m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
+
+def divide(pile, tol=16):
+    return
+
+
+def conquer(sous_piles):
+    '''Etape du règne pour l'instant à \lambda constant' '''
+    for qdrt in sous_piles:
+        pass
+    return
+        
 
 
 # Test sur données réelles
@@ -687,7 +713,8 @@ pile_sofi_moy = np.mean(pile_sofi, axis=0)
 
 T_ech = pile_sofi.shape[0]
 
-pile_sofi_test = pile_sofi[:3,:32,:32]
+pile_sofi_test = pile_sofi[:,:32,:32]
+pile_sofi_test_moy = np.mean(pile_sofi_test, axis=0) 
 quadr = quadrant_divide(pile_sofi_test)
 recol = recollons_un_quadrant(quadr)
 
@@ -698,8 +725,29 @@ plt.figure()
 plt.imshow(pile_sofi_test[0])
 
 
+y = np.mean(quadr[0,:], axis=0) 
+R_y = covariance_pile(quadr[0,:], y)
+
+
+N_ECH = y.shape[1] # Taux d'échantillonnage
+X_GAUCHE = 0
+X_DROIT = 1/4
+GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
+X, Y = np.meshgrid(GRID, GRID)
+domaine = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
+
+# lambda_reg = 1e-2
+
+# (m_cov, nrj_cov) = SFW(R_y, domaine, lambda_reg)
+# print(m_cov)
+
+
+# certif_V = etak(m_cov, R_y, domaine, lambda_reg)
+# plot_results(m_cov, domaine, nrj_cov, certif_V, y)
+
+# m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
 # y = pile_sofi_moy  
-# R_y = covariance_pile(pile_sofi, pile_sofi_moy)
+# R_y = covariance_pile(pile_sofi_test, pile_sofi_test_moy)
 # R_x = m_ax0.covariance_kernel(X, Y)
 
 # # Param régul

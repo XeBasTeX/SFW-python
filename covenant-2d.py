@@ -16,6 +16,7 @@ __deboggage__ = False
 import numpy as np
 from scipy import integrate
 import scipy
+import ot
 
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -381,13 +382,16 @@ def covariance_pile(stack, stack_mean):
         covar += np.outer(stack[i,:] - stack_mean, stack[i,:] - stack_mean)
     return covar/len(stack-1)   # T-1 ou T hierher ?
 
-# Le fameux algo de Sliding Frank Wolfe
 
+# Le fameux algo de Sliding Frank Wolfe
 def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     '''y acquisition et nIter nombre d'itérations
     mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
     un vecteur qui contient les mesure_k, mesure à la k-ième itération'''
     N_ech_y = dom.N_ech # hierher à adapter
+    N_grille = dom.N_ech**2
+    if obj == 'covar':
+        N_grille = N_grille**2
     X_domain = dom.X
     Y_domain = dom.Y
     a_k = np.empty((0,0))
@@ -446,8 +450,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             x_p = params[int(len(params)/3):]
             # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
-            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p,
-                                                              dom, obj))
+            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom, 
+                                                              obj))
             parcimonie = regul*np.linalg.norm(a_p, 1)
             return attache + parcimonie
 
@@ -483,11 +487,25 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     return(mesure_k, nrj_vecteur)
 
 
+def wasserstein_metric(mes, m_zer):
+    '''Retourne la 2--distance de Wasserstein partiel (Partial Gromov-
+    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    luminosité)'''
+    M = scipy.spatial.distance.cdist(mes.x, m_zer.x)
+    p = ot.unif(mes.N)
+    q = ot.unif(m_zer.N)
+    # masse = min(np.linalg.norm(p, 1),np.linalg.norm(q, 1))
+    # en fait la masse pour les deux = 1
+    masse = 1
+    w, log = ot.partial.partial_wasserstein(p, q, M, m=masse, log=True)
+    return log['partial_w_dist']
+
+
 def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
     if m.a.size > 0:
-        # fig = plt.figure(figsize=(15,12))
-        fig = plt.figure(figsize=(13,10))
+        fig = plt.figure(figsize=(15,12))
+        # fig = plt.figure(figsize=(13,10))
         fig.suptitle(fr'Reconstruction en bruits {type_bruits} ' +
                      fr'pour $\lambda = {lambda_regul:.0e}$ ' +
                      fr'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
@@ -671,14 +689,14 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
 
 N_ECH = 2**4 # Taux d'échantillonnage
 X_GAUCHE = 0
-X_DROIT = 1
+X_DROIT = 1 
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 
-m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
+m_ax0 = Mesure2D([8,10,6,7],[[0.2,0.23],[0.80,0.35],[0.33,0.82],[0.30,0.30]])
+# m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
 # m_ax0 = mesure_aleatoire(9)
-# y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
 
 T_ech = 50        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
 
@@ -690,8 +708,8 @@ R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(domain.X, domain.Y)
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-lambda_regul = 5e-6 # Param de relaxation pour SFW R_y
-lambda_regul2 = 8e-2 # Param de relaxation pour SFW y_moy
+lambda_regul = 2e-6 # Param de relaxation pour SFW R_y
+lambda_regul2 = 7.5e-2 # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
 # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
@@ -712,15 +730,16 @@ print('On a retrouvé m_Mx = ' + str(m_cov))
 certificat_V = etak(m_cov, R_y, domain, lambda_regul, obj='covar')
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
-plt.figure(figsize=(12,4))
-plt.subplot(121)
-plt.imshow(m_cov.covariance_kernel(domain.X,domain.Y))
-plt.colorbar()
-plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
-plt.subplot(122)
-plt.imshow(R_y)
-plt.colorbar()
-plt.title(r'$R_y$', fontsize=40)
+if __saveFig__:
+    plt.figure(figsize=(12,4))
+    plt.subplot(121)
+    plt.imshow(m_cov.covariance_kernel(domain.X,domain.Y))
+    plt.colorbar()
+    plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
+    plt.subplot(122)
+    plt.imshow(R_y)
+    plt.colorbar()
+    plt.title(r'$R_y$', fontsize=40)
 
 
 print('On a retrouvé m_ax = ' + str(m_moy))
@@ -730,11 +749,15 @@ print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 
 true_pos =  np.sort(m_ax0.x, axis=0)
-dist_x_cov = str(np.linalg.norm(true_pos - np.sort(m_cov.x,axis=0)))
-dist_x_moy = str(np.linalg.norm(true_pos - np.sort(m_moy.x,axis=0)))
-print(r'Dist L^2 des x de Q_\lambda : ' + dist_x_cov)
-print(r'Dist L^2 des x de P_\lambda : ' + dist_x_moy)
-
+try:
+    # dist_x_cov = np.linalg.norm(true_pos - np.sort(m_cov.x,axis=0))
+    # dist_x_moy = np.linalg.norm(true_pos - np.sort(m_moy.x,axis=0))
+    dist_x_cov = wasserstein_metric(m_cov, m_ax0)
+    dist_x_moy = wasserstein_metric(m_moy, m_ax0)
+    print(fr'Dist PGW des x de Q_\lambda : {dist_x_cov:.3f}')
+    print(fr'Dist PGW des x de P_\lambda : {dist_x_moy:.3f}')
+except ValueError:
+    print('[!] Attention N différents')
 
 y_simul = m_cov.kernel(domain.X,domain.Y)
 
