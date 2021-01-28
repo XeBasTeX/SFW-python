@@ -25,11 +25,13 @@ import scipy
 # from sklearn import linear_model
 
 
-# np.random.seed(0)
+np.random.seed(90)
 N_ech = 2**6 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
+X_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech)
+X_certif = np.linspace(xgauche, xdroit, N_ech+1)
 
 sigma = 1e-1 # écart-type de la PSF
 lambda_regul = 8e-4 # Param de relaxation
@@ -207,12 +209,17 @@ def phi_vecteur(a, x, domain):
     return(m_tmp.kernel(domain))
 
 
-def phiAdjoint(y, domain, noyau='gaussien'):
+def phiAdjointSimps(y, domain, noyau='gaussien'):
     eta = np.empty(N_ech)
     for i in range(N_ech):
         x = domain[i]
         eta[i] = integrate.simps(y*gaussienne(x-domain),x=domain)
     return eta
+
+
+def phiAdjoint(y, domain, noyau='gaussien'):
+    return np.convolve(gaussienne(domain),y,'valid')/N_ech
+
 
 
 def etaW(x, N, sigma, noyau='gaussien'):
@@ -240,7 +247,7 @@ def etaWx0(x, x0, mesure, sigma, noyau='gaussien'):
 
 
 def etak(mesure, y, regul):
-    eta = 1/regul*phiAdjoint(y - phi(mesure, X), X)
+    eta = 1/regul*phiAdjoint(y - phi(mesure, X), X_big)
     return eta
 
 
@@ -248,11 +255,11 @@ def etak(mesure, y, regul):
 m_ax0 = Mesure([1.3,0.8,1.4], [0.2,0.37,0.7])
 y = m_ax0.acquisition(niveaubruits)
 
-# certificat_V = etak(m_ax, y, regul)
-certificat_W = etaW(X, 3, 1e-1)
-# certificat_W_x0 = etaWx0(X, 1e-1, m_ax0, sigma)
-plt.plot(X, certificat_W)
-plt.grid()
+# # certificat_V = etak(m_ax, y, regul)
+# certificat_W = etaW(X, 3, 1e-1)
+# # certificat_W_x0 = etaWx0(X, 1e-1, m_ax0, sigma)
+# plt.plot(X, certificat_W)
+# plt.grid()
 
 
 
@@ -350,7 +357,7 @@ if __name__ == '__main__':
         plt.legend()
         
         plt.subplot(222)
-        plt.plot(X, certificat_V, 'r', linewidth=2)
+        plt.plot(X_certif, certificat_V, 'r', linewidth=2)
         plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
         plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
         # plt.xlabel('$x$', fontsize=18)
@@ -400,4 +407,19 @@ def tracePath(chemin, lambda_vecteur):
 # if __saveFig__ == True:
 #     plt.savefig('fig/regularisation-chemin.pdf', format='pdf', dpi=1000,
 #     bbox_inches='tight', pad_inches=0.03)
+
+
+
+# #%% Accélérer le calcul de l'adjoint
+
+# adj1 = np.convolve(gaussienne(X_big),y,'valid')/N_ech
+# adj2 = phiAdjointSimps(y, X)
+
+# plt.figure(figsize=(15,10))
+# plt.title('Pas exactement les mêmes points', fontsize=30)
+# plt.plot(adj1, '--', linewidth=2.5)
+# plt.plot(adj2, linewidth=2.5)
+# plt.grid()
+
+
 

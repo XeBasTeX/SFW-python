@@ -16,7 +16,9 @@ __deboggage__ = False
 
 import numpy as np
 from scipy import integrate
+import scipy.signal
 import scipy
+import ot
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -34,6 +36,12 @@ xgauche = 0
 xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
 X, Y = np.meshgrid(X_grid, X_grid)
+
+X_grid_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech)
+X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
+
+X_grid_certif = np.linspace(xgauche, xdroit, N_ech+1)
+X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
 
 
 class Mesure2D:
@@ -87,13 +95,8 @@ class Mesure2D:
                 D = np.sqrt(np.power(X_domain - x[i,0],2) + np.power(Y_domain - x[i,1],2))
                 acquis += a[i]*gaussienne(D)
             return acquis
-        elif noyau == 'double_gaussien':
-            for i in range(0,N):
-                D = np.sqrt(np.power(X_domain - x[i,0],2) + np.power(Y_domain - x[i,1],2))
-                acquis += a[i]*double_gaussienne(D)
-            return acquis
         else:
-            return acquis
+            raise TypeError('Unknown kernel! You might want to implement it')
 
 
     def acquisition(self, X_domain, Y_domain, N_ech, nv):
@@ -192,7 +195,7 @@ def phi_vecteur(a, x, X_domain, Y_domain):
     return(m_tmp.kernel(X_domain, Y_domain))
 
 
-def phiAdjoint(y, X_domain, Y_domain, noyau='gaussien'):
+def phiAdjointSimps(y, X_domain, Y_domain, noyau='gaussien'):
     taille_y = len(y)
     eta = np.empty(np.shape(y))
     for i in range(taille_y):
@@ -200,8 +203,15 @@ def phiAdjoint(y, X_domain, Y_domain, noyau='gaussien'):
             x_decal = X_domain[i,j]
             y_decal = Y_domain[i,j]
             D_decal = np.sqrt(np.power(x_decal-X_domain,2) + np.power(y_decal-Y_domain,2))
-            integ_x = integrate.simps(y*gaussienne(D_decal), x=X_grid)
-            eta[i,j] = integrate.simps(integ_x, x=X_grid)
+            integ_x = integrate.trapz(y*gaussienne(D_decal), x=X_grid)
+            eta[i,j] = integrate.trapz(integ_x, x=X_grid)
+    return eta
+
+
+def phiAdjoint(y, X_domain, Y_domain, noyau='gaussien'):
+    '''Calcul de l'adjoint par convolution '''
+    out = gaussienne_2D(X_domain, Y_domain)
+    eta = scipy.signal.convolve2d(out, y, mode='valid')/(N_ech**2)
     return eta
 
 
@@ -230,7 +240,8 @@ def etaWx0(x, x0, mesure, sigma, noyau='gaussien'):
 
 
 def etak(mesure, y, X_domain, Y_domain, regul):
-    eta = 1/regul*phiAdjoint(y - phi(mesure, X_domain, Y_domain), X_domain, Y_domain)
+    eta = 1/regul*phiAdjoint(y - phi(mesure, X_domain, Y_domain), 
+                             X_big, Y_big)
     return eta
 
 def gaussienne(domain, sigma=1e-1):
@@ -238,9 +249,12 @@ def gaussienne(domain, sigma=1e-1):
     return np.sqrt(2*np.pi*sigma**2)*np.exp(-np.power(domain,2)/(2*sigma**2))
 
 
-def double_gaussienne(domain):
-    '''Gaussienne au carré centrée en 0'''
-    return np.power(gaussienne(domain),2)
+def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
+    '''Gaussienne centrée en 0'''
+    expo = np.exp(-(np.power(X_domain,2) +
+                    np.power(Y_domain,2))/(2*sigma_g**2))
+    normalis = np.sqrt(2*np.pi*sigma_g**2)
+    return normalis*expo
 
 
 def ideal_lowpass(domain, fc):
@@ -268,7 +282,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
         eta_V_k = etak(mesure_k, y, X, Y, regul)
         x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None), eta_V_k.shape)
         x_star = np.array(x_star_index)[::-1]/N_ech_y # hierher passer de l'idx à xstar
-        print(f'* x^* index {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
+        print(f'* x^* index {x_star} max = {np.round(eta_V_k[x_star_index], 2)}')
         
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
@@ -293,9 +307,10 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
                 return(attache + parcimonie)
             res = scipy.optimize.minimize(lasso, np.ones(Nk+1))
             a_k_demi = res.x
-            print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
             mesure_k_demi += Mesure2D(a_k_demi,x_k_demi)
-            print('* Mesure_k_demi : ' +  str(mesure_k_demi))
+            if __deboggage__:
+               print('* a_k_demi : ' + str(np.round(a_k_demi, 2))) 
+               print('* Mesure_k_demi : ' +  str(mesure_k_demi))
 
             # On résout double LASSO non-convexe (étape 8)
             def lasso_double(params):
@@ -311,7 +326,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
             initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
             res = scipy.optimize.minimize(lasso_double, initial_guess,
                                           method='BFGS',
-                                          options={'disp': True})
+                                          options={'disp': __deboggage__})
             a_k_plus = (res.x[:int(len(res.x)/3)])
             x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
 
@@ -321,6 +336,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
             a_k = mesure_k.a
             x_k = mesure_k.x
             Nk = mesure_k.N
+            print(f'* {Nk} Diracs')
 
             # Graphe et énergie
             # mesure_k.graphe()
@@ -367,7 +383,8 @@ def plot_results(m):
         plt.colorbar();
 
         plt.subplot(223)
-        cont3 = plt.contourf(X, Y, certificat_V, 100, cmap='seismic')
+        cont3 = plt.contourf(X_certif, Y_certif, certificat_V, 100,
+                             cmap='seismic')
         for c in cont3.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -381,7 +398,7 @@ def plot_results(m):
         plt.ylabel('$T_\lambda(m)$', fontsize=20)
         plt.title('BLASSO energy $T_\lambda(m)$', fontsize=20)
         plt.grid()
-        if __saveFig__ == True:
+        if __saveFig__:
             plt.savefig('fig/dirac-certificat-2d.pdf', format='pdf', dpi=1000,
                         bbox_inches='tight', pad_inches=0.03)
 
@@ -445,6 +462,21 @@ def gif_results(y, m_ax0, m_sfw, video='gif'):
     return fig
 
 
+def wasserstein_metric(mes, m_zer):
+    '''Retourne la 2--distance de Wasserstein partiel (Partial Gromov-
+    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    luminosité)'''
+    M = scipy.spatial.distance.cdist(mes.x, m_zer.x)
+    p = ot.unif(mes.N)
+    q = ot.unif(m_zer.N)
+    # masse = min(np.linalg.norm(p, 1),np.linalg.norm(q, 1))
+    # en fait la masse pour les deux = 1
+    masse = 1
+    w, log = ot.partial.partial_wasserstein(p, q, M, m=masse, log=True)
+    return log['partial_w_dist']
+
+
+
 # m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
 m_ax0 = mesureAleatoire(9)
 y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
@@ -461,13 +493,31 @@ print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 y_simul = m_sfw.kernel(X,Y)
 
-if __saveFig__ == True:
-    plot_results(m_sfw)
+wasser = wasserstein_metric(m_sfw, m_ax0)
+print(f'2-distance de Wass : {wasser:.3f}')
+
+plot_results(m_sfw)
 if __saveVid__ == True and m_sfw.a.size > 0:
     gif_results(y, m_ax0, m_sfw)
 
 
-# #%% Wasserstein 2D
-# # Il faudrait utiliser sliced_wasserstein
-# # Mais la dernière version n'est pas dispo
-# J'ai essayé gudhi, c'était tout sauf concluant
+# #%%
+
+
+# out = gaussienne_2D(X_big, Y_big)
+# adj1 = scipy.signal.convolve2d(out, y, mode='valid')/(N_ech**2)
+# adj2 = phiAdjointSimps(y, X, Y)
+
+
+# plt.figure(figsize=(20,10))
+# plt.subplot(121)
+# plt.imshow(adj1)
+# plt.title('Convol', fontsize=40)
+# plt.colorbar()
+# plt.subplot(122)
+# plt.imshow(adj2)
+# plt.colorbar()
+# plt.title('Simps', fontsize=40)
+
+
+

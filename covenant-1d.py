@@ -15,6 +15,7 @@ __deboggage__ = False
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate
+import scipy.signal
 from scipy.stats import wasserstein_distance
 import scipy
 
@@ -25,6 +26,8 @@ N_ech = 2**6 # Taux d'échantillonnage
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
+X_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech)
+X_certif = np.linspace(xgauche, xdroit, N_ech+1)
 
 sigma = 1e-1 # écart-type de la PSF
 
@@ -277,15 +280,15 @@ def phi_vecteur(a, x, domain, obj='covar'):
         raise TypeError
 
 
-def phiAdjoint(cov_acquis, domain, obj='covar'):
+def phiAdjointSimps(cov_acquis, domain, obj='covar'):
     taille_y = len(cov_acquis)
     if obj == 'covar':
         eta = np.empty(taille_y)
         for i in range(taille_y):
             x_decal = domain[i]
             noyau = gaussienne(x_decal - domain)
-            phi = np.outer(noyau,noyau)
-            integ_x = integrate.simps(cov_acquis*phi, x=domain)
+            phi_c = np.outer(noyau, noyau)
+            integ_x = integrate.simps(cov_acquis*phi_c, x=domain)
             eta[i] = integrate.simps(integ_x, x=domain) # Deux intégrations car 
                                                         # eta \in C(X,R) 
         return eta
@@ -295,6 +298,18 @@ def phiAdjoint(cov_acquis, domain, obj='covar'):
             x = domain[i]
             eta[i] = integrate.simps(cov_acquis*gaussienne(x-domain),x=domain)
         return eta
+    else:
+        raise TypeError
+
+
+def phiAdjoint(cov_acquis, domain, obj='covar'):
+    taille_y = len(cov_acquis)
+    if obj == 'covar':
+        out = np.outer(gaussienne(X_big), gaussienne(X_big))
+        eta = scipy.signal.convolve(out, cov_acquis, 'valid')/taille_y**2
+        return np.diag(eta)
+    if obj == 'acquis':
+        return np.convolve(gaussienne(X_big), cov_acquis,'valid')/taille_y
     else:
         raise TypeError
 
@@ -472,7 +487,7 @@ print('On a retrouvé m_ax, ' + str(m_moy))
 if m_cov.a.size > 0:
     # wasser = wasserstein_distance(m_cov.x, m_ax0.x, m_cov.a, m_ax0.a)
     wasser = wasserstein_distance(m_cov.x, m_ax0.x)
-    print(f'2-distance de Wasserstein : W_2(m_cov,m_ax0) = {wasser}')
+    print(f'2-distance de Wasserstein : W_2(m_cov,m_ax0) = {wasser:.3f}')
 
     # plt.figure(figsize=(21,4))
     fig = plt.figure(figsize=(15,12))
@@ -493,7 +508,7 @@ if m_cov.a.size > 0:
     plt.legend()
     
     plt.subplot(222)
-    plt.plot(X, certificat_V, 'r', linewidth=2)
+    plt.plot(X_certif, certificat_V, 'r', linewidth=2)
     plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
     plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
     # plt.xlabel('$x$', fontsize=18)
@@ -518,7 +533,7 @@ if m_cov.a.size > 0:
     if m_moy.a.size > 0:
         # wasser = wasserstein_distance(m_moy.x, m_ax0.x, m_moy.a, m_ax0.a)
         wasser = wasserstein_distance(m_moy.x, m_ax0.x)
-        print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser}')
+        print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser:.3f}')
     
         fig = plt.figure(figsize=(15,12))
         fig.suptitle(fr'Reconstruction en bruits {type_bruits} ' + 
@@ -543,7 +558,7 @@ if m_cov.a.size > 0:
         plt.legend()
         
         plt.subplot(222)
-        plt.plot(X, certificat_V_moy, 'r', linewidth=2)
+        plt.plot(X_certif, certificat_V_moy, 'r', linewidth=2)
         plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
         plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
         # plt.xlabel('$x$', fontsize=18)
@@ -571,4 +586,20 @@ if m_cov.a.size > 0:
         if __saveFig__ == True:
             plt.savefig('fig/covar-moy-certificat-1d.pdf', format='pdf', 
                         dpi=1000, bbox_inches='tight', pad_inches=0.03)
+
+
+# #%% Accélérer le calcul de l'adjoint
+
+
+# out = np.outer(gaussienne(X_big), gaussienne(X_big))
+# adj1 = scipy.signal.convolve(out, R_y, 'valid')/N_ech**2
+# adj2 = phiAdjointSimps(R_y, X)
+
+# plt.figure(figsize=(15,10))
+# plt.title('Pas exactement les mêmes points', fontsize=30)
+# plt.plot(np.diag(adj1), '--', linewidth=2.5, label='Convol')
+# plt.plot(adj2, linewidth=2.5, label='Simps')
+# plt.legend(fontsize=25)
+# plt.grid()
+
 

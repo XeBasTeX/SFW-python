@@ -16,6 +16,7 @@ __deboggage__ = False
 import numpy as np
 from scipy import integrate
 import scipy
+import scipy.signal
 import ot
 
 from matplotlib.animation import FuncAnimation
@@ -23,7 +24,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
 
-# np.random.seed(80)
+np.random.seed(80)
 sigma = 1e-1 # écart-type de la PSF
 
 type_bruits = 'gauss'
@@ -317,7 +318,30 @@ def phi_vecteur(a, x, dom, obj='covar'):
     raise TypeError
 
 
-def phiAdjoint(acquis, dom, obj='covar'):
+# def get_full_kernel(dom, obj='covar'):
+#     X_domain = dom.X
+#     Y_domain = dom.Y
+#     taille_y = len(X_domain)
+#     taille_x = len(X_domain[0])
+#     if obj == 'covar':
+#         for i in range(taille_x):
+#             for j in range(taille_y):
+#                 x_decal = X_domain[i,j]
+#                 y_decal = Y_domain[i,j]
+#                 convol = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain)
+#                 noyau = np.outer(convol, convol)
+#                 return noyau
+#     if obj == 'acquis':
+#         for i in range(taille_x):
+#             for j in range(taille_y):
+#                 x_decal = X_domain[i,j]
+#                 y_decal = Y_domain[i,j]
+#                 D_decal = (np.sqrt(np.power(x_decal-X_domain,2)
+#                                    + np.power(y_decal-Y_domain,2)))
+#                 return gaussienne(D_decal)
+   
+
+def phiAdjointSimps(acquis, dom, obj='covar'):
     '''Hierher débugger ; taille_x et taille_y pas implémenté'''
     X_domain = dom.X
     Y_domain = dom.Y
@@ -337,8 +361,8 @@ def phiAdjoint(acquis, dom, obj='covar'):
                                             ech_x_square)
                 Y_range_integ = np.linspace(dom.x_gauche, dom.x_droit,
                                             ech_y_square)
-                integ_x = integrate.simps(acquis*noyau, x=X_range_integ)
-                eta[i,j] = integrate.simps(integ_x, x=Y_range_integ)
+                integ_x = integrate.trapz(acquis * noyau, x=X_range_integ)
+                eta[i,j] = integrate.trapz(integ_x, x=Y_range_integ)
         return eta
     if obj == 'acquis':
         for i in range(taille_x):
@@ -347,18 +371,71 @@ def phiAdjoint(acquis, dom, obj='covar'):
                 y_decal = Y_domain[i,j]
                 D_decal = (np.sqrt(np.power(x_decal-X_domain,2)
                                    + np.power(y_decal-Y_domain,2)))
-                integ_x = integrate.simps(acquis*gaussienne(D_decal),
+                integ_x = integrate.simps(acquis * gaussienne(D_decal),
                                           x=dom.X_grid)
                 eta[i,j] = integrate.simps(integ_x, x=dom.X_grid)
         return eta
     raise TypeError
 
 
+def phiAdjoint(acquis, dom, obj='covar'):
+    '''Hierher débugger ; taille_x et taille_y pas implémenté'''
+    X_domain = dom.X
+    Y_domain = dom.Y
+    N_ech = dom.N_ech
+    # taille_y = len(X_domain)
+    # taille_x = len(X_domain[0])
+    # ech_x_square = X_domain.size
+    # ech_y_square = Y_domain.size
+    eta = np.zeros(np.shape(X_domain))
+    if obj == 'covar':
+        return eta
+    if obj == 'acquis':
+        out = gaussienne_2D(X_domain, Y_domain)
+        eta = scipy.signal.convolve2d(out, acquis, mode='valid')/(N_ech**2)
+        return eta
+    raise TypeError
+
+
 def etak(mesure, acquis, dom, regul, obj='covar'):
     r'''Certificat $\eta$ assicé à la mesure'''
-    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj),
+    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj),
                              dom, obj)
     return eta
+
+
+# @cuda.jit('void(float64[:],float64[:],float64[:],float64)')
+# def gaussienneCUDA(eta, X_domain, Y_domain, sigma_g):
+#     '''Gaussienne centrée en 0'''
+#     expo = math.exp(-(math.power(X_domain,2) +
+#                     math.power(Y_domain,2))/(2*sigma_g**2))
+#     normalis = math.sqrt(2*np.pi*sigma_g**2)
+#     eta = normalis*expo
+
+
+# @cuda.jit('void(float64[:])')
+# def phiAdjointCUDA(acquis):
+#     '''Hierher débugger ; taille_x et taille_y pas implémenté'''
+#     X_domain = X
+#     Y_domain = Y
+#     taille_y = len(X_domain)
+#     taille_x = len(X_domain[0])
+#     ech_x_square = X_domain.size
+#     ech_y_square = Y_domain.size
+#     eta = np.zeros(np.shape(X_domain))
+#     i,j = cuda.grid(2)
+#     if i < taille_x and j < taille_y:
+#         x_decal = X_domain[i,j]
+#         y_decal = Y_domain[i,j]
+#         convol = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain)
+#         noyau = np.outer(convol, convol)
+#         X_range_integ = np.linspace(X_GAUCHE, X_DROIT,
+#                                     ech_x_square)
+#         Y_range_integ = np.linspace(X_GAUCHE, X_DROIT,
+#                                     ech_y_square)
+#         integ_x = integrate.trapz(acquis * noyau, x=X_range_integ)
+#         eta[i,j] = integrate.trapz(integ_x, x=Y_range_integ)
+#     return eta
 
 
 def pile_aquisition(m, dom, fond, nv, bruits='gauss'):
@@ -405,21 +482,22 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     for k in range(nIter):
         print('\n' + 'Étape numéro ' + str(k))
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
-        x_star_index = np.unravel_index(np.argmax(np.abs(eta_V_k), axis=None),
+        certif_abs = np.abs(eta_V_k)
+        x_star_index = np.unravel_index(np.argmax(certif_abs, axis=None),
                                         eta_V_k.shape)
         x_star = np.array(x_star_index)[::-1]/N_ech_y # hierher passer de l'idx à xstar
         print(fr'* x^* index {x_star} max ' +
-              fr'à {np.round(eta_V_k[x_star_index], 2)}')
+              fr'à {np.round(certif_abs[x_star_index], 2)}')
 
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
-            nrj_vecteur[k:] = mesure_k.energie(X_domain, Y_domain, acquis,
+            nrj_vecteur[k] = mesure_k.energie(X_domain, Y_domain, acquis,
                                                regul, obj)
             # print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
             if mesParIter:
-                return(mesure_k, nrj_vecteur, mes_vecteur)
-            return(mesure_k, nrj_vecteur)
+                return(mesure_k, nrj_vecteur[:k], mes_vecteur)
+            return(mesure_k, nrj_vecteur[:k])
 
         # Création du x positions estimées
         mesure_k_demi = Mesure2D()
@@ -440,8 +518,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
                                       options={'disp': __deboggage__})
         a_k_demi = res.x
 
-        print('* x_k_demi : ' + str(x_k_demi))
-        print('* a_k_demi : ' + str(a_k_demi))
+        print('* x_k_demi : ' + str(np.round(x_k_demi,2)))
+        print('* a_k_demi : ' + str(np.round(a_k_demi,2)))
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
@@ -464,7 +542,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         a_k_plus = (res.x[:int(len(res.x)/3)])
         x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
         print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
-        print('* x_k_plus : ' +  str(x_k_plus))
+        print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
 
         # Mise à jour des paramètres avec retrait des Dirac nuls
         mesure_k = Mesure2D(a_k_plus, x_k_plus)
@@ -694,7 +772,13 @@ GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 
-m_ax0 = Mesure2D([8,10,6,7],[[0.2,0.23],[0.80,0.35],[0.33,0.82],[0.30,0.30]])
+X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
+X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
+
+X_grid_certif = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, N_ECH+1)
+X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
+
+m_ax0 = Mesure2D([8,10,6,7],[[0.18,0.2],[0.80,0.35],[0.33,0.82],[0.30,0.30]])
 # m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
 # m_ax0 = mesure_aleatoire(9)
 
@@ -719,7 +803,8 @@ lambda_regul2 = 7.5e-2 # Param de relaxation pour SFW y_moy
 # lambda_regul = 1e-8 # Param de relaxation pour SFW R_y
 # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
 
-iteration = m_ax0.N + 1
+iteration = m_ax0.N + 6
+
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_regul,
                                 nIter=iteration, mesParIter=True, obj='covar')
@@ -748,16 +833,22 @@ certificat_V_moy = etak(m_moy, y, domain, lambda_regul2,
 print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 
-true_pos =  np.sort(m_ax0.x, axis=0)
+# Métrique de déconvolution : distance de Wasserstein
 try:
-    # dist_x_cov = np.linalg.norm(true_pos - np.sort(m_cov.x,axis=0))
-    # dist_x_moy = np.linalg.norm(true_pos - np.sort(m_moy.x,axis=0))
     dist_x_cov = wasserstein_metric(m_cov, m_ax0)
-    dist_x_moy = wasserstein_metric(m_moy, m_ax0)
-    print(fr'Dist PGW des x de Q_\lambda : {dist_x_cov:.3f}')
-    print(fr'Dist PGW des x de P_\lambda : {dist_x_moy:.3f}')
 except ValueError:
-    print('[!] Attention N différents')
+    print('[!] Attention Cov Dirac nul')
+    dist_x_cov = np.inf
+try:
+    dist_x_moy = wasserstein_metric(m_moy, m_ax0)
+except ValueError:
+    print('[!] Attention Moy Dirac nul')
+    dist_x_moy = np.inf
+
+print(fr'Dist PGW des x de Q_\lambda : {dist_x_cov:.3f}')
+print(fr'Dist PGW des x de P_\lambda : {dist_x_moy:.3f}')
+
+
 
 y_simul = m_cov.kernel(domain.X,domain.Y)
 
@@ -771,3 +862,23 @@ if __saveVid__:
     gif_pile(pile, m_ax0, domain)
     if m_cov.a.size > 0:
         gif_results(y, m_ax0, mes_cov, domain)
+
+
+#%%
+
+gauss = gaussienne_2D(X_big, Y_big)
+out = gauss
+adj1 = scipy.signal.convolve2d(out, R_y, mode='valid')/(N_ECH**4)
+adj2 = phiAdjointSimps(R_y, domain)
+
+
+plt.figure(figsize=(20,10))
+plt.subplot(121)
+plt.imshow(adj1)
+plt.title('Convol', fontsize=40)
+plt.colorbar()
+plt.subplot(122)
+plt.imshow(adj2)
+plt.colorbar()
+plt.title('Simps', fontsize=40)
+
