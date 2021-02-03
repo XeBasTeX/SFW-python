@@ -158,6 +158,18 @@ class Mesure:
         return acquis
 
 
+    def covariance_diag_kernel(self, domain, u, v):
+        N = self.N
+        x = self.x
+        a = self.a
+        acquis = np.zeros((N_ech, N_ech))
+        for i in range(0, N):
+            noyau_u = gaussienne(u - x[i])
+            noyau_v = gaussienne(v - x[i])
+            acquis += a[i]*noyau_u*noyau_v
+        return acquis
+
+
     def acquisition(self, nv, bruits='unif'):
         '''Opérateur d'acquistions ainsi que bruit blanc gaussien
             de DSP nv (pour niveau).'''
@@ -597,8 +609,8 @@ if m_cov.a.size > 0:
 
 # plt.figure(figsize=(15,10))
 # plt.title('Pas exactement les mêmes points', fontsize=30)
-# plt.plot(np.diag(adj1), '--', linewidth=2.5, label='Convol')
-# plt.plot(adj2, linewidth=2.5, label='Simps')
+# plt.plot(X_certif, np.diag(adj1), '--', linewidth=2.5, label='Convol')
+# plt.plot(X, adj2, linewidth=2.5, label='Simps')
 # plt.legend(fontsize=25)
 # plt.grid()
 

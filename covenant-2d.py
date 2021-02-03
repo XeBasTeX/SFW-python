@@ -867,7 +867,7 @@ if __saveVid__:
 #%%
 
 gauss = gaussienne_2D(X_big, Y_big)
-out = gauss
+out = np.outer(gauss, gauss)
 adj1 = scipy.signal.convolve2d(out, R_y, mode='valid')/(N_ECH**4)
 adj2 = phiAdjointSimps(R_y, domain)
 

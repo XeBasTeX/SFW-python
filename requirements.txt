@@ -1,0 +1,8 @@
+numba==0.51.2
+numpy==1.19.5
+pycuda==2020.1
+pytools==2021.1
+scikit-cuda==0.5.3
+torch==1.7.1
+torchaudio==0.7.2
+torchvision==0.8.2

@@ -159,7 +159,7 @@ class Mesure:
 
 
     def energie(self, X, y, regul):
-        attache = 0.5*np.linalg.norm(y - self.kernel(X))
+        attache = 0.5*np.linalg.norm(y - self.kernel(X))/len(y)
         parcimonie = regul*self.tv()
         return(attache + parcimonie)
 
@@ -283,14 +283,14 @@ def SFW(y, regul=1e-5, nIter=5):
             nrj_vecteur[k] = mesure_k.energie(X, y, regul)
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
-            return(mesure_k, nrj_vecteur)
+            return(mesure_k, nrj_vecteur[:k])
         else:
             mesure_k_demi = Mesure([],[])
             x_k_demi = x_k + [x_star]
 
             # On résout LASSO (étape 7)
             def lasso(a):
-                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,X))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,X))/N_ech_y
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
             # lasso = lambda a : 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y))) + regul*np.linalg.norm(a, 1)
@@ -304,7 +304,7 @@ def SFW(y, regul=1e-5, nIter=5):
             def lasso_double(params):
                 a = params[:int(len(params)/2)]
                 x = params[int(len(params)/2):]
-                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x,X))
+                attache = 0.5*np.linalg.norm(y - phi_vecteur(a,x,X))/N_ech_y
                 parcimonie = regul*np.linalg.norm(a, 1)
                 return(attache + parcimonie)
 
@@ -324,7 +324,7 @@ def SFW(y, regul=1e-5, nIter=5):
 
             # Graphe et énergie
             # mesure_k.graphe()
-            nrj_vecteur[k] = 0.5*np.linalg.norm(y - mesure_k.kernel(X)) + regul*mesure_k.tv()
+            nrj_vecteur[k] = mesure_k.energie(X, y, regul)
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             
     print("\n\n---- Fin de la boucle ----")
