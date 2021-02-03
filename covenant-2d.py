@@ -31,6 +31,13 @@ type_bruits = 'gauss'
 niveau_bruits = 3e-1 # sigma du bruit
 b_fond = 5.0
 
+N_ECH = 2**5 # Taux d'échantillonnage
+X_GAUCHE = 0
+X_DROIT = 1 
+GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
+X, Y = np.meshgrid(GRID, GRID)
+
+
 
 def gaussienne(carre, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
@@ -68,6 +75,19 @@ class Domain:
 
     def compute_square_mesh(self):
         return np.meshrgrid(self.X_grid)
+
+
+    def big(self):
+        grid_big = np.linspace(self.x_gauche-self.x_droit, self.x_droit,
+                                 2*self.N_ech)
+        X_big, Y_big = np.meshgrid(grid_big, grid_big)
+        return(X_big, Y_big)
+
+
+    def certif(self):
+        X_grid_certif = np.linspace(self.x_gauche, self.x_droit, self.N_ech+1)
+        X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
+        return(X_certif, Y_certif)
 
 
 # Bruits
@@ -380,27 +400,28 @@ def phiAdjointSimps(acquis, dom, obj='covar'):
 
 def phiAdjoint(acquis, dom, obj='covar'):
     '''Hierher débugger ; taille_x et taille_y pas implémenté'''
-    X_domain = dom.X
-    Y_domain = dom.Y
     N_ech = dom.N_ech
-    # taille_y = len(X_domain)
-    # taille_x = len(X_domain[0])
-    # ech_x_square = X_domain.size
-    # ech_y_square = Y_domain.size
-    eta = np.zeros(np.shape(X_domain))
+    eta = np.zeros(np.shape(dom.X))
     if obj == 'covar':
+        (X_big, Y_big) = dom.big()
+        h_vec = gaussienne_2D(X_big, Y_big)
+        convol_row = scipy.signal.convolve(acquis, h_vec, 'same').T
+        adj = np.diag(scipy.signal.convolve(convol_row, h_vec, 'same'))
+        eta = adj.reshape(N_ech, N_ech)/N_ech**4
         return eta
     if obj == 'acquis':
-        out = gaussienne_2D(X_domain, Y_domain)
-        eta = scipy.signal.convolve2d(out, acquis, mode='valid')/(N_ech**2)
+        (X_big, Y_big) = dom.big()
+        out = gaussienne_2D(X_big, Y_big)
+        eta = scipy.signal.convolve(out, acquis, mode='valid')/(N_ech**2)
         return eta
     raise TypeError
 
 
 def etak(mesure, acquis, dom, regul, obj='covar'):
     r'''Certificat $\eta$ assicé à la mesure'''
-    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj),
-                             dom, obj)
+    # eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj),
+    #                          dom, obj)
+    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
 
@@ -620,7 +641,8 @@ def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
 
         plt.subplot(223)
         # plt.pcolormesh(X, Y, certificat_V, shading='gouraud', cmap='seismic')
-        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='seismic')
+        X_c, Y_c = dom.certif()
+        cont3 = plt.contourf(certif, 100, cmap='seismic')
         for c in cont3.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -765,15 +787,10 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     return fig
 
 
-N_ECH = 2**4 # Taux d'échantillonnage
-X_GAUCHE = 0
-X_DROIT = 1 
-GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
-X, Y = np.meshgrid(GRID, GRID)
 domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 
-X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
-X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
+# X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
+# X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
 
 X_grid_certif = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, N_ECH+1)
 X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
@@ -792,8 +809,8 @@ R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(domain.X, domain.Y)
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-lambda_regul = 2e-6 # Param de relaxation pour SFW R_y
-lambda_regul2 = 7.5e-2 # Param de relaxation pour SFW y_moy
+lambda_regul = 8e-6 # Param de relaxation pour SFW R_y
+lambda_regul2 = 7e-2 # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
 # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
@@ -803,7 +820,7 @@ lambda_regul2 = 7.5e-2 # Param de relaxation pour SFW y_moy
 # lambda_regul = 1e-8 # Param de relaxation pour SFW R_y
 # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
 
-iteration = m_ax0.N + 6
+iteration = m_ax0.N + 1
 
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_regul,
@@ -866,19 +883,32 @@ if __saveVid__:
 
 #%%
 
-gauss = gaussienne_2D(X_big, Y_big)
-out = np.outer(gauss, gauss)
-adj1 = scipy.signal.convolve2d(out, R_y, mode='valid')/(N_ECH**4)
-adj2 = phiAdjointSimps(R_y, domain)
+# X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
+# X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
+# out = gaussienne_2D(X_big, Y_big)
+# adj = scipy.signal.convolve(y, out, mode='valid')/(N_ECH**2)
+
+# plt.figure(figsize=(20,10))
+# plt.imshow(adj)
+
+#%%
+
+# X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
+# X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
+
+# h_vec = gaussienne_2D(X_big, Y_big)
+# adj1 = np.diag(scipy.signal.convolve(scipy.signal.convolve(R_y, h_vec, 'same').T,  h_vec, 'same'))/N_ECH**4
+# adj1 = adj1.reshape(N_ECH, N_ECH)
+# # adj2 = phiAdjointSimps(R_y, domain)
 
 
-plt.figure(figsize=(20,10))
-plt.subplot(121)
-plt.imshow(adj1)
-plt.title('Convol', fontsize=40)
-plt.colorbar()
-plt.subplot(122)
-plt.imshow(adj2)
-plt.colorbar()
-plt.title('Simps', fontsize=40)
+# plt.figure(figsize=(20,10))
+# plt.subplot(121)
+# plt.imshow(adj1)
+# plt.title('Convol', fontsize=40)
+# plt.colorbar()
+# plt.subplot(122)
+# plt.imshow(adj2)
+# plt.colorbar()
+# plt.title('Simps', fontsize=40)
 
