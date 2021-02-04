@@ -10,7 +10,7 @@ __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = False
 __saveVid__ = False
-__deboggage__ = False
+__deboggage__ = True
 
 
 import numpy as np
@@ -31,7 +31,7 @@ type_bruits = 'gauss'
 niveau_bruits = 3e-1 # sigma du bruit
 b_fond = 5.0
 
-N_ECH = 2**5 # Taux d'échantillonnage
+N_ECH = 2**4 # Taux d'échantillonnage
 X_GAUCHE = 0
 X_DROIT = 1 
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
