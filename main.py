@@ -221,7 +221,6 @@ def phiAdjoint(y, domain, noyau='gaussien'):
     return np.convolve(gaussienne(domain),y,'valid')/N_ech
 
 
-
 def etaW(x, N, sigma, noyau='gaussien'):
     '''Certificat \eta_W dans le cas gaussien, avec formule analytique'''
     x = x/sigma # Normalisation
@@ -325,7 +324,7 @@ def SFW(y, regul=1e-5, nIter=5):
             # Graphe et énergie
             # mesure_k.graphe()
             nrj_vecteur[k] = mesure_k.energie(X, y, regul)
-            print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             
     print("\n\n---- Fin de la boucle ----")
     return(mesure_k, nrj_vecteur)

@@ -437,7 +437,7 @@ def SFW(acquis, regul=1e-5, nIter=5, mesParIter=False, obj='covar',
             # attache = 0.5*np.linalg.norm(R_y - mesure_k.covariance_kernel(X, X, X))
             # nrj_vecteur[k] = attache + regul*mesure_k.tv()
             nrj_vecteur[k] = mesure_k.energie(X, acquis, regul, obj)
-            print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             if mesParIter == True:
                 mes_vecteur = np.append(mes_vecteur, [mesure_k])
             
@@ -600,25 +600,25 @@ if m_cov.a.size > 0:
                         dpi=1000, bbox_inches='tight', pad_inches=0.03)
 
 
-#%% Accélérer le calcul de l'adjoint
+# #%% Accélérer le calcul de l'adjoint
 
 
-h_vec = gaussienne(X_big).reshape(-1,1)
-out = np.outer(gaussienne(X_big), gaussienne(X_big))
-adj1 = scipy.signal.convolve(out, R_y, 'valid')/N_ech**2
-adj2 = phiAdjointSimps(R_y, X)
-adj3 = scipy.signal.convolve(gaussienne(X_big), np.sqrt(np.diag(R_y)),'valid')**2/(2*N_ech**2)
-adj4 = scipy.signal.convolve(gaussienne(X_big), np.diag(R_y),'valid')/(N_ech**2)
-# adj4 = scipy.signal.convolve(gaussienne(X_big), adj4,'valid')
-adj5 = np.diag(scipy.signal.convolve2d(scipy.signal.convolve2d(R_y, h_vec, 'same').T,  h_vec, 'same'))/N_ech**2
+# h_vec = gaussienne(X_big).reshape(-1,1)
+# out = np.outer(gaussienne(X_big), gaussienne(X_big))
+# adj1 = scipy.signal.convolve(out, R_y, 'valid')/N_ech**2
+# adj2 = phiAdjointSimps(R_y, X)
+# adj3 = scipy.signal.convolve(gaussienne(X_big), np.sqrt(np.diag(R_y)),'valid')**2/(2*N_ech**2)
+# adj4 = scipy.signal.convolve(gaussienne(X_big), np.diag(R_y),'valid')/(N_ech**2)
+# # adj4 = scipy.signal.convolve(gaussienne(X_big), adj4,'valid')
+# adj5 = np.diag(scipy.signal.convolve2d(scipy.signal.convolve2d(R_y, h_vec, 'same').T,  h_vec, 'same'))/N_ech**2
 
-plt.figure(figsize=(15,10))
-plt.title('Pas exactement les mêmes points', fontsize=30)
-# plt.plot(X, np.diag(R_y)/N_ech*sigma, '--', linewidth=2.5, label='$R_y$')
-plt.plot(X_certif, np.diag(adj1), '--', linewidth=2.5, label='Convol')
-plt.plot(X, adj5, linewidth=2.5, label='Convol 2')
-plt.plot(X, adj2, linewidth=2.5, label='Simps')
-plt.legend(fontsize=25)
-plt.grid()
+# plt.figure(figsize=(15,10))
+# plt.title('Pas exactement les mêmes points', fontsize=30)
+# # plt.plot(X, np.diag(R_y)/N_ech*sigma, '--', linewidth=2.5, label='$R_y$')
+# plt.plot(X_certif, np.diag(adj1), '--', linewidth=2.5, label='Convol')
+# plt.plot(X, adj5, linewidth=2.5, label='Convol 2')
+# plt.plot(X, adj2, linewidth=2.5, label='Simps')
+# plt.legend(fontsize=25)
+# plt.grid()
 
 

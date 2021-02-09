@@ -341,7 +341,7 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
             # Graphe et énergie
             # mesure_k.graphe()
             nrj_vecteur[k] = mesure_k.energie(X, Y, y, regul)
-            print(f'* Energie : {nrj_vecteur[k]:.3f}')
+            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             if mesParIter == True:
                 mes_vecteur = np.append(mes_vecteur, [mesure_k])
             

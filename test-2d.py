@@ -15,6 +15,7 @@ __deboggage__ = False
 
 import numpy as np
 from scipy import integrate
+import scipy.signal
 import scipy
 import ot
 
@@ -24,7 +25,6 @@ import matplotlib.pyplot as plt
 
 import os
 from skimage import io
-import csv
 
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -329,29 +329,6 @@ def phi_vecteur(a, x, dom, obj='covar'):
         m_tmp = Mesure2D(a, x)
         return m_tmp.kernel(X_domain, Y_domain)
     raise TypeError
-
-
-# def get_full_kernel(dom, obj='covar'):
-#     X_domain = dom.X
-#     Y_domain = dom.Y
-#     taille_y = len(X_domain)
-#     taille_x = len(X_domain[0])
-#     if obj == 'covar':
-#         for i in range(taille_x):
-#             for j in range(taille_y):
-#                 x_decal = X_domain[i,j]
-#                 y_decal = Y_domain[i,j]
-#                 convol = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain)
-#                 noyau = np.outer(convol, convol)
-#                 return noyau
-#     if obj == 'acquis':
-#         for i in range(taille_x):
-#             for j in range(taille_y):
-#                 x_decal = X_domain[i,j]
-#                 y_decal = Y_domain[i,j]
-#                 D_decal = (np.sqrt(np.power(x_decal-X_domain,2)
-#                                    + np.power(y_decal-Y_domain,2)))
-#                 return gaussienne(D_decal)
    
 
 def phiAdjointSimps(acquis, dom, obj='covar'):
@@ -405,7 +382,7 @@ def phiAdjoint(acquis, dom, obj='covar'):
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
         out = gaussienne_2D(X_big, Y_big)
-        eta = scipy.signal.convolve(out, acquis, mode='valid')/(N_ech**2)
+        eta = scipy.signal.convolve2d(out, acquis, mode='valid')/(N_ech**2)
         return eta
     raise TypeError
 
@@ -459,6 +436,8 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
     if mesParIter:
         mes_vecteur = np.array([])
     nrj_vecteur = np.zeros(nIter)
+
+    print(f'---- Début de la boucle : {obj} ----')
     for k in range(nIter):
         print('\n' + 'Étape numéro ' + str(k))
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
@@ -498,8 +477,9 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
                                       options={'disp': __deboggage__})
         a_k_demi = res.x
 
-        print('* x_k_demi : ' + str(np.round(x_k_demi,2)))
-        print('* a_k_demi : ' + str(np.round(a_k_demi,2)))
+        # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
+        # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
+        print('* Optim convexe')
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
@@ -521,8 +501,8 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
                                       options={'disp': __deboggage__})
         a_k_plus = (res.x[:int(len(res.x)/3)])
         x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
-        print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
-        print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
+        # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
+        # print('* x_k_plus : ' + str(np.round(x_k_plus, 2)))
 
         # Mise à jour des paramètres avec retrait des Dirac nuls
         mesure_k = Mesure2D(a_k_plus, x_k_plus)
@@ -530,11 +510,12 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
         a_k = mesure_k.a
         x_k = mesure_k.x
         Nk = mesure_k.N
+        print(f'* Optim non-convexe : {Nk} Diracs')
 
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(X_domain, Y_domain, acquis, regul,
                                           obj)
-        print(f'* Energie : {nrj_vecteur[k]:.3f}')
+        print(f'* Énergie : {nrj_vecteur[k]:.3f}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
 
@@ -545,8 +526,34 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
     return(mesure_k, nrj_vecteur)
 
 
-def wasserstein_metric(mes, m_zer):
+def wasserstein_metric(mes, m_zer, p_wasser=1):
     '''Retourne la 2--distance de Wasserstein partiel (Partial Gromov-
+    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    luminosité)'''
+    if p_wasser == 1:
+        M = ot.dist(mes.x, m_zer.x, metric='euclidean')
+    elif p_wasser == 2:
+        M = ot.dist(mes.x, m_zer.x)
+    else:
+        raise ValueError('Unknown p for W_p computation')
+    a = ot.unif(mes.N)
+    b = ot.unif(m_zer.N)
+    W = ot.emd2(a, b, M)
+    return W
+
+
+def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
+    if p_wasser == 1:
+        M = ot.dist(mes.x, m_zer.x, metric='euclidean')
+        return M
+    elif p_wasser == 2:
+        M = ot.dist(mes.x, m_zer.x)
+        return M
+    raise ValueError('Unknown p for W_p computation')
+
+
+def partial_wasserstein_metric(mes, m_zer):
+    '''Retourne la 1--distance de Wasserstein partiel (Partial Gromov-
     Wasserstein) pour des poids égaux (pas de prise en compte de la 
     luminosité)'''
     M = scipy.spatial.distance.cdist(mes.x, m_zer.x)
@@ -554,7 +561,7 @@ def wasserstein_metric(mes, m_zer):
     q = ot.unif(m_zer.N)
     # masse = min(np.linalg.norm(p, 1),np.linalg.norm(q, 1))
     # en fait la masse pour les deux = 1
-    masse = 0.99
+    masse = 1
     w, log = ot.partial.partial_wasserstein(p, q, M, m=masse, log=True)
     return log['partial_w_dist']
 
@@ -562,9 +569,12 @@ def wasserstein_metric(mes, m_zer):
 def plot_results(m, dom, nrj, certif, moy, title=None, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
     if m.a.size > 0:
-        # fig = plt.figure(figsize=(15,12))
-        fig = plt.figure(figsize=(13,10))
-        fig.suptitle(r'Reconstruction', fontsize=20)
+        fig = plt.figure(figsize=(15,12))
+        # fig = plt.figure(figsize=(13,10))
+        diss = wasserstein_metric(m, m_ax0)
+        fig.suptitle(f'Reconstruction {obj} : ' + 
+                     r'$\mathcal{{W}}_1(m, m_{a_0,x_0})$' +
+                     f' = {diss:.3f}', fontsize=22)
 
         plt.subplot(221)
         cont1 = plt.contourf(dom.X, dom.Y, moy, 100, cmap='seismic')
@@ -590,14 +600,18 @@ def plot_results(m, dom, nrj, certif, moy, title=None, obj='covar'):
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
             plt.title(r'Reconstruction $m_{M,x}$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'of N = {m.N}', fontsize=20)
         elif obj == 'acquis':
             plt.title(r'Reconstruction $m_{a,x}$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'of N = {m.N}', fontsize=20)
         plt.colorbar()
 
         plt.subplot(223)
-        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='seismic')
+        if obj == 'acquis':
+            X_cer, Y_cer = dom.certif()
+            cont3 = plt.contourf(X_cer, Y_cer, certif, 100, cmap='seismic')
+        else:
+            cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='seismic')
         for c in cont3.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -617,7 +631,7 @@ def plot_results(m, dom, nrj, certif, moy, title=None, obj='covar'):
         plt.grid()
 
         if title is None:
-            title = 'fig/covar-certificat-test-2d.pdf'
+            title = 'fig/test-covar-certificat-2d.pdf'
         elif isinstance(title, str):
             title = 'fig/' + title + '.pdf'
         else:
@@ -630,7 +644,7 @@ def plot_results(m, dom, nrj, certif, moy, title=None, obj='covar'):
 def gif_pile(pile_acquis, acquis, m_zer, dom, video='gif', title=None):
     '''Hierher à terminer de débogger'''
     # ax, fig = plt.subplots(figsize=(10,10))
-    fig = plt.figure(figsize=(8,8))
+    fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
     # ax.set(xlim=(0, 1), ylim=(0, 1))
     cont_pile = ax.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
@@ -645,9 +659,9 @@ def gif_pile(pile_acquis, acquis, m_zer, dom, video='gif', title=None):
             return
         ax.clear()
         ax.set_aspect('equal', adjustable='box')
-        ax.contourf(dom.X, dom.Y, pile_acquis[k,:], 100,cmap='seismic')
-        ax.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-               s=2*dom.N_ech, label='GT spikes')
+        ax.contourf(dom.X, dom.Y, pile_acquis[k, :], 100, cmap='seismic')
+        ax.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                   s=2*dom.N_ech, label='GT spikes')
         ax.set_xlabel('X', fontsize=25)
         ax.set_ylabel('Y', fontsize=25)
         ax.set_title(f'Acquisition numéro = {k}', fontsize=30)
@@ -778,22 +792,25 @@ def conquer(sous_piles):
     for qdrt in sous_piles:
         pass
     return
-        
 
 
 # Test sur données réelles
 pile_sofi = np.array(io.imread('sofi/siemens_star.tiff'), dtype='float64')
-pile_sofi_moy = np.mean(pile_sofi, axis=0) 
+pile_sofi_moy = np.mean(pile_sofi, axis=0)
 T_ech = pile_sofi.shape[0]
 VRAI_N_ECH = pile_sofi.shape[-1]
 
-reduc = 4
-bas_red = 9
-haut_red = 25
+bas_red = 6
+haut_red = 26
+reduc = VRAI_N_ECH/(haut_red - bas_red)
 
 emitters_loc = np.genfromtxt('sofi/emitters.csv', delimiter=',')
 emitters_loc /= VRAI_N_ECH
-emitters_loc_test = [el for el in emitters_loc if bas_red/VRAI_N_ECH < np.linalg.norm(el, np.inf) < haut_red/VRAI_N_ECH]
+emitters_loc_test = [el for el in emitters_loc
+                     if bas_red/VRAI_N_ECH <
+                     np.linalg.norm(el, np.inf) <
+                     haut_red/VRAI_N_ECH]
+
 emitters_loc_test = np.vstack(emitters_loc_test) - bas_red/VRAI_N_ECH
 emitters_loc_test = reduc*emitters_loc_test[:, [1, 0]]
 m_ax0 = Mesure2D(np.ones(emitters_loc_test.shape[0]), emitters_loc_test)
@@ -804,24 +821,34 @@ pile_sofi_test = pile_sofi_test/np.max(pile_sofi_test)
 pile_sofi_test_moy = np.mean(pile_sofi_test, axis=0)
 
 
-N_ECH = pile_sofi_test.shape[-1] # Taux d'échantillonnage
+N_ECH = pile_sofi_test.shape[-1]  # Taux d'échantillonnage
 X_GAUCHE = 0
-X_DROIT = 1 
+X_DROIT = 1
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 domaine = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 
-y = np.mean(pile_sofi_test, axis=0) 
+y = np.mean(pile_sofi_test, axis=0)
 R_y = covariance_pile(pile_sofi_test, y)
 
 
-FWMH = 2.2875/N_ECH
+FWMH = 2.2875/VRAI_N_ECH
 sigma = FWMH/(2*np.sqrt(2*np.log(2)))
-lambda_reg = 0.48e-8
+lambda_reg = 1e-9  # Param de relaxation pour Q_\lambda(y)
+lambda_regul2 = 3e-5  # Param de relaxation pour P_\lambda(y_bar)
 iteration = m_ax0.N + 1
 
-(m_cov, nrj_cov) = SFW(R_y, domaine, lambda_reg, nIter=iteration)
-print(m_cov)
+
+# Reconstruction
+(m_cov, nrj_cov, mes_cov) = SFW(R_y, domaine, lambda_reg, nIter=iteration, 
+                       mesParIter=True)
+(m_moy, nrj_moy, mes_moy) = SFW(y, domaine, lambda_regul2, nIter=iteration,
+                                  mesParIter=True, obj='acquis')
+
+print(f'm_Mx : {m_cov.N} Diracs')
+print(f'm_ax : {m_moy.N} Diracs')
+print(f'm_ax0 : {m_ax0.N} Diracs')
+# print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 # Métrique de déconvolution : distance de Wasserstein
 try:
@@ -829,54 +856,27 @@ try:
 except ValueError:
     print('[!] Attention Cov Dirac nul')
     dist_x_cov = np.inf
+try:
+    dist_x_moy = wasserstein_metric(m_moy, m_ax0)
+except ValueError:
+    print('[!] Attention Moy Dirac nul')
+    dist_x_moy = np.inf
 
-print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+
 print(fr'Dist PGW des x de Q_\lambda : {dist_x_cov:.3f}')
+print(fr'Dist PGW des x de P_\lambda : {dist_x_moy:.3f}')
 
 if m_cov.a.size > 0:
     certif_V = etak(m_cov, R_y, domaine, lambda_reg)
     plot_results(m_cov, domaine, nrj_cov, certif_V, y)
+if m_moy.a.size > 0:
+    certificat_V_moy = etak(m_moy, y, domaine, lambda_regul2,
+                        obj='acquis')
+    plot_results(m_moy, domaine, nrj_moy, certificat_V_moy, y,
+                  title='test-moy-certificat-2d', obj='acquis')
 
-# m_ax0 = Mesure2D([8,10,6],[[0.2,0.23],[0.80,0.35],[0.33,0.82]])
-# y = pile_sofi_moy  
-# R_y = covariance_pile(pile_sofi_test, pile_sofi_test_moy)
-# R_x = m_ax0.covariance_kernel(X, Y)
-
-# # Param régul
-# lambda_regul = 5e-6 # Param de relaxation pour SFW R_y
-# lambda_regul2 = 8e-2 # Param de relaxation pour SFW y_moy
-
-# iteration = m_ax0.N + 1
-
-# (m_cov, nrj_cov, mes_cov) = SFW(R_y, regul=lambda_regul, nIter=iteration,
-#                                   mesParIter=True, obj='covar')
-# (m_moy, nrj_moy, mes_moy) = SFW(y, regul=lambda_regul2, nIter=iteration,
-#                                   mesParIter=True, obj='acquis')
-
-# print('On a retrouvé m_Mx = ' + str(m_cov))
-# certificat_V = etak(m_cov, R_y, X, Y, lambda_regul, obj='covar')
-# print('On voulait retrouver m_ax0 = ' + str(m_ax0))
-
-# print('On a retrouvé m_ax = ' + str(m_moy))
-# certificat_V_moy = etak(m_moy, y, X, Y, lambda_regul2, obj='acquis')
-# print('On voulait retrouver m_ax0 = ' + str(m_ax0))
-
-
-# true_pos =  np.sort(m_ax0.x, axis=0)
-# dist_x_cov = str(np.linalg.norm(true_pos - np.sort(m_cov.x,axis=0)))
-# dist_x_moy = str(np.linalg.norm(true_pos - np.sort(m_moy.x,axis=0)))
-# print('Dist L^2 des x de Q_\lambda : ' + dist_x_cov)
-# print('Dist L^2 des x de P_\lambda : ' + dist_x_moy)
-
-
-# y_simul = m_cov.kernel(X,Y)
-
-# if m_cov.a.size > 0:
-#     plot_results(m_cov, y, nrj_cov, certificat_V)
-# if m_moy.a.size > 0:
-#     plot_results(m_moy, y, nrj_moy, certificat_V_moy, 
-#                   title='covar-moy-certificat-test-2d', obj='acquis')
-
+if __saveVid__ and m_cov.a.size > 0:
+    gif_results(y, m_ax0, mes_cov, domaine)
 
 # # Partie test quadrants
 # quadr = quadrant_divide(pile_sofi_test)

@@ -10,7 +10,7 @@ __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = False
 __saveVid__ = False
-__deboggage__ = True
+__deboggage__ = False
 
 
 import numpy as np
@@ -18,6 +18,7 @@ from scipy import integrate
 import scipy
 import scipy.signal
 import ot
+import cvxpy as cp
 
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -412,7 +413,7 @@ def phiAdjoint(acquis, dom, obj='covar'):
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
         out = gaussienne_2D(X_big, Y_big)
-        eta = scipy.signal.convolve(out, acquis, mode='valid')/(N_ech**2)
+        eta = scipy.signal.convolve2d(out, acquis, mode='valid')/(N_ech**2)
         return eta
     raise TypeError
 
@@ -557,8 +558,12 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
         initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
+        a_part = list(zip([0]*(Nk+1),[100]*(Nk+1)))
+        x_part = list(zip([0]*2*(Nk+1),[1]*2*(Nk+1)))
+        bounds_bfgs = a_part + x_part
         res = scipy.optimize.minimize(lasso_double, initial_guess,
-                                      method='BFGS',
+                                      method='L-BFGS-B',
+                                      bounds=bounds_bfgs,
                                       options={'disp': __deboggage__})
         a_k_plus = (res.x[:int(len(res.x)/3)])
         x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
@@ -575,7 +580,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(X_domain, Y_domain, acquis, regul,
                                           obj)
-        print(f'* Energie : {nrj_vecteur[k]:.3f}')
+        print(f'* Énergie : {nrj_vecteur[k]:.3f}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
 
@@ -586,7 +591,33 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     return(mesure_k, nrj_vecteur)
 
 
-def wasserstein_metric(mes, m_zer):
+def wasserstein_metric(mes, m_zer, p_wasser=1):
+    '''Retourne la p--distance de Wasserstein partiel (Partial Gromov-
+    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    luminosité)'''
+    if p_wasser == 1:
+        M = ot.dist(mes.x, m_zer.x, metric='euclidean')
+    elif p_wasser == 2:
+        M = ot.dist(mes.x, m_zer.x)
+    else:
+        raise ValueError('Unknown p for W_p computation')
+    a = ot.unif(mes.N)
+    b = ot.unif(m_zer.N)
+    W = ot.emd2(a, b, M)
+    return W
+
+
+def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
+    if p_wasser == 1:
+        M = ot.dist(mes.x, m_zer.x, metric='euclidean')
+        return M
+    elif p_wasser == 2:
+        M = ot.dist(mes.x, m_zer.x)
+        return M
+    raise ValueError('Unknown p for W_p computation')
+
+
+def partial_wasserstein_metric(mes, m_zer):
     '''Retourne la 2--distance de Wasserstein partiel (Partial Gromov-
     Wasserstein) pour des poids égaux (pas de prise en compte de la 
     luminosité)'''
@@ -881,7 +912,18 @@ if __saveVid__:
         gif_results(y, m_ax0, mes_cov, domain)
 
 
-#%%
+# #%% Accélération étape 7
+
+# # Construct the problem.
+# a = cp.Variable(m_cov.N)
+# error = cp.sum_squares(y  - phi_vecteur(a, m_cov.x, domain))
+# obj = cp.Minimize(error + lambda_regul*cp.norm(a, 1))
+# prob = cp.Problem(obj)
+
+
+
+
+# #%%
 
 # X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
 # X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
@@ -891,7 +933,7 @@ if __saveVid__:
 # plt.figure(figsize=(20,10))
 # plt.imshow(adj)
 
-#%%
+# #%%
 
 # X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
 # X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
