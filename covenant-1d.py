@@ -16,8 +16,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import integrate
 import scipy.signal
-from scipy.stats import wasserstein_distance
 import scipy
+import ot
 
 
 
@@ -498,7 +498,7 @@ print('On a retrouvé m_ax, ' + str(m_moy))
 
 if m_cov.a.size > 0:
     # wasser = wasserstein_distance(m_cov.x, m_ax0.x, m_cov.a, m_ax0.a)
-    wasser = wasserstein_distance(m_cov.x, m_ax0.x)
+    wasser = ot.wasserstein_1d(m_cov.x, m_ax0.x)
     print(f'2-distance de Wasserstein : W_2(m_cov,m_ax0) = {wasser:.3f}')
 
     # plt.figure(figsize=(21,4))
@@ -544,7 +544,7 @@ if m_cov.a.size > 0:
 
     if m_moy.a.size > 0:
         # wasser = wasserstein_distance(m_moy.x, m_ax0.x, m_moy.a, m_ax0.a)
-        wasser = wasserstein_distance(m_moy.x, m_ax0.x)
+        wasser = ot.wasserstein_1d(m_moy.x, m_ax0.x)
         print(f'2-distance de Wasserstein : W_2(m_moy,m_ax0) = {wasser:.3f}')
     
         fig = plt.figure(figsize=(15,12))

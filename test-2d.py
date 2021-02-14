@@ -314,7 +314,7 @@ def phi(m, dom, obj='covar'):
         return m.covariance_kernel(X_domain, Y_domain)
     if obj == 'acquis':
         return m.kernel(X_domain, Y_domain)
-    raise TypeError
+    raise TypeError('Unknown BLASSO target')
 
 
 def phi_vecteur(a, x, dom, obj='covar'):
@@ -328,7 +328,7 @@ def phi_vecteur(a, x, dom, obj='covar'):
     if obj == 'acquis':
         m_tmp = Mesure2D(a, x)
         return m_tmp.kernel(X_domain, Y_domain)
-    raise TypeError
+    raise TypeError('Unknown BLASSO target')
    
 
 def phiAdjointSimps(acquis, dom, obj='covar'):
