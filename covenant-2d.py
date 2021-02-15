@@ -43,7 +43,7 @@ X, Y = np.meshgrid(GRID, GRID)
 def gaussienne(carre, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
     expo = np.exp(-np.power(carre,2)/(2*sigma_g**2))
-    normalis = sigma_g*(2*np.pi)
+    normalis = sigma_g * (2*np.pi)
     # normalis = 1
     return expo/normalis
 
@@ -52,36 +52,49 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
     expo = np.exp(-(np.power(X_domain,2) +
                     np.power(Y_domain,2))/(2*sigma_g**2))
-    normalis = sigma_g*(2*np.pi)
+    normalis = sigma_g * (2*np.pi)
     # normalis = 1
     return expo/normalis
 
 
-def grad_x_gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
-    '''Gaussienne centrée en 0'''
-    expo = np.exp(-(np.power(X_domain,2) +
-    np.power(Y_domain,2))/(2*sigma_g**2))
-    normalis = - sigma_g**3 * (2*np.pi)
-    carre = X_domain
+# def gaussienne_eval(params):
+#     '''Gaussienne centrée en 0 pour évaluation en 1 point'''
+#     x_pos = params[0]
+#     y_pos = params[-1]
+#     expo = np.exp(-(x_pos**2 + y_pos**2)/(2*sigma**2))
+#     normalis = sigma * (2*np.pi)
+#     return expo/normalis
+
+
+def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g=sigma):
+    '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
+    rule derivation'''
+    expo = np.exp(-(np.power(X_domain, 2) +
+                    np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g**3 * (2*np.pi)
+    carre = - X_deriv
     return carre * expo / normalis
 
 
-def grad_y_gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
-    '''Gaussienne centrée en 0'''
-    expo = np.exp(-(np.power(X_domain,2) +
-    np.power(Y_domain,2))/(2*sigma_g**2))
-    normalis = - sigma_g**3 * (2*np.pi)
-    carre = Y_domain
+def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g=sigma):
+    '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
+    rule derivation'''
+    expo = np.exp(-(np.power(X_domain, 2) +
+                    np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g**3 * (2*np.pi)
+    carre = - Y_deriv
     return carre * expo / normalis
 
 
-def grad_gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
-    '''Gaussienne centrée en 0'''
-    expo = np.exp(-(np.power(X_domain,2) +
-    np.power(Y_domain,2))/(2*sigma_g**2))
-    normalis = - sigma_g**3 * (2*np.pi)
-    carre = np.sqrt(np.power(X_domain,2) + np.power(Y_domain,2))
-    return normalis * carre * expo
+# def grad_gaussienne_2D(params):
+#     '''Gaussienne centrée en 0'''
+#     x_pos = params[0]
+#     y_pos = params[-1]
+#     sigma_g = sigma
+#     expo = np.exp(-(x_pos**2 + y_pos**2)/(2*sigma_g**2))
+#     normalis = sigma_g**3 * (2*np.pi)
+#     eval_grad = np.array([-x_pos*normalis*expo, -y_pos*normalis*expo]) 
+#     return eval_grad
 
 
 def ideal_lowpass(carre, f_c):
@@ -297,25 +310,27 @@ class Mesure2D:
         '''énergie de la mesure pour le problème Covenant ou BLASSO sur
         l'acquisition moyenne '''
         if bruits == 'poisson':
+            normalis = acquis.size
             if obj == 'covar':
                 R_nrj = self.covariance_kernel(X_domain, Y_domain)
-                attache = 0.5*np.linalg.norm(acquis - R_nrj)
+                attache = 0.5*np.linalg.norm(acquis - R_nrj)**2/normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
             if obj == 'acquis':
                 simul = self.kernel(X_domain, Y_domain)
-                attache = 0.5*np.linalg.norm(acquis - simul)
+                attache = 0.5*np.linalg.norm(acquis - simul)**2/normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
         elif bruits in ('gauss', 'unif'):
+            normalis = acquis.size
             if obj == 'covar':
                 R_nrj = self.covariance_kernel(X_domain, Y_domain)
-                attache = 0.5*np.linalg.norm(acquis - R_nrj)
+                attache = 0.5*np.linalg.norm(acquis - R_nrj)**2/normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
             if obj == 'acquis':
                 simul = self.kernel(X_domain, Y_domain)
-                attache = 0.5*np.linalg.norm(acquis - simul)
+                attache = 0.5*np.linalg.norm(acquis - simul)**2/normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
             raise TypeError("Unknown kernel")
@@ -529,10 +544,34 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         # On résout LASSO (étape 7)
         def lasso(aa):
             difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
-            attache = 0.5*np.linalg.norm(difference)
+            attache = 0.5*np.linalg.norm(difference)**2
             parcimonie = regul*np.linalg.norm(aa, 1)
             return attache + parcimonie
+
+        def grad_lasso(params):
+            aa = params
+            xx = x_k_demi
+            N = len(aa)
+            partial_a = N*[0]
+            residual = acquis - phi_vecteur(aa, xx, dom, obj)
+            if obj == 'covar':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+                    cov_gauss = np.outer(gauss, gauss)
+                    normalis = dom.N_ech**4
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
+                return partial_a
+            elif obj == 'acquis':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+                    normalis = dom.N_ech**2
+                    partial_a[i] = regul - np.sum(gauss*residual)/normalis
+                return partial_a
+            else:
+                raise TypeError('Unknown BLASSO target.')
+
         res = scipy.optimize.minimize(lasso, lasso_guess,
+                                      jac=grad_lasso,
                                       options={'disp': __deboggage__})
         a_k_demi = res.x
 
@@ -547,7 +586,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
             attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom, 
-                                                              obj))
+                                                              obj))**2
             parcimonie = regul*np.linalg.norm(a_p, 1)
             return attache + parcimonie
 
@@ -559,34 +598,45 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             partial_a = N*[0]
             partial_x = 2*N*[0]
             residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
-            if obj == 'acquis':
+            if obj == 'covar':
                 for i in range(N):
-                    partial_a[i] = regul - \
-                            np.sum(gaussienne_2D(dom.X - x_p[i,0],
-                                                   dom.Y - x_p[i,1])*residual)/dom.N_ech**2
-                    partial_x[2*i] = a_p[i]* \
-                        np.sum(grad_gaussienne_2D(dom.X - x_p[i,0], dom.Y) \
-                                *residual)/dom.N_ech**4
-                    partial_x[2*i+1] = a_p[i]* \
-                        np.sum(grad_gaussienne_2D(dom.X, dom.Y - x_p[i,1]) \
-                                *residual)/dom.N_ech**4
-                return(partial_a + partial_x)
-            elif obj == 'covar':
-                for i in range(N):
-                    gauss = gaussienne_2D(dom.X - x_p[i,0], dom.Y - x_p[i,1])
+                    gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
                     cov_gauss = np.outer(gauss, gauss)
-                    partial_a[i] = - np.sum(cov_gauss*residual)/dom.N_ech**4 + regul
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)
         
-                    gauss_der_x = grad_gaussienne_2D(dom.X - x_p[i%2,0], dom.Y)
+                    gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.X - x_p[i, 0])
                     cov_der_x = np.outer(gauss_der_x, gauss)
-                    partial_x[2*i] = a_p[i]*np.sum(cov_der_x*residual)/dom.N_ech**4
-                    gauss_der_y = grad_gaussienne_2D(dom.X - x_p[i%2,1], dom.Y)
+                    partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)
+                    gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.Y - x_p[i, 1])
                     cov_der_y = np.outer(gauss_der_y, gauss)
-                    partial_x[2*i+1] = a_p[i]*np.sum(cov_der_y*residual)/dom.N_ech**4
+                    partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)
+        
+                return(partial_a + partial_x)
+            elif obj == 'acquis':
+                for i in range(N):
+                    integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
+                                                          dom.Y - x_p[i, 1]))
+                    partial_a[i] = regul - integ/N_grille
+        
+                    grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.X - x_p[i, 0])
+                    integ_x = np.sum(residual*grad_gauss_x) / N_grille
+                    partial_x[2*i] = a_p[i] * integ_x
+                    grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.Y - x_p[i, 1])
+                    integ_y = np.sum(residual*grad_gauss_y)
+                    partial_x[2*i+1] = a_p[i] * integ_y
+        
                 return(partial_a + partial_x)
             else:
                 raise TypeError('Unknown BLASSO target.')
-        
+
 
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
@@ -596,7 +646,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         bounds_bfgs = a_part + x_part
         res = scipy.optimize.minimize(lasso_double, initial_guess,
                                       method='L-BFGS-B',
-                                      # jac=grad_lasso_double,
+                                       jac=grad_lasso_double,
                                       bounds=bounds_bfgs,
                                       options={'disp': __deboggage__})
         a_k_plus = (res.x[:int(len(res.x)/3)])
@@ -873,7 +923,7 @@ R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(domain.X, domain.Y)
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-lambda_regul = 1e-3 # Param de relaxation pour SFW R_y
+lambda_regul = 1e-5 # Param de relaxation pour SFW R_y
 lambda_regul2 = 7e-2 # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
@@ -892,9 +942,13 @@ iteration = m_ax0.N
 (m_moy, nrj_moy, mes_moy) = SFW(y, domain, regul=lambda_regul2,
                                 nIter=iteration, mesParIter=True, obj='acquis')
 
-print('On a retrouvé m_Mx = ' + str(m_cov))
+print(f'm_Mx : {m_cov.N} Diracs')
+print(f'm_ax : {m_moy.N} Diracs')
+print(f'm_ax0 : {m_ax0.N} Diracs')
+
 certificat_V = etak(m_cov, R_y, domain, lambda_regul, obj='covar')
-print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+certificat_V_moy = etak(m_moy, y, domain, lambda_regul2,
+                        obj='acquis')
 
 if __saveFig__:
     plt.figure(figsize=(12,4))
@@ -906,12 +960,6 @@ if __saveFig__:
     plt.imshow(R_y)
     plt.colorbar()
     plt.title(r'$R_y$', fontsize=40)
-
-
-print('On a retrouvé m_ax = ' + str(m_moy))
-certificat_V_moy = etak(m_moy, y, domain, lambda_regul2,
-                        obj='acquis')
-print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 
 # Métrique de déconvolution : distance de Wasserstein
@@ -926,8 +974,8 @@ except ValueError:
     print('[!] Attention Moy Dirac nul')
     dist_x_moy = np.inf
 
-print(fr'Dist PGW des x de Q_\lambda : {dist_x_cov:.3f}')
-print(fr'Dist PGW des x de P_\lambda : {dist_x_moy:.3f}')
+print(fr'Dist W_1 des x de Q_\lambda : {dist_x_cov:.3f}')
+print(fr'Dist W_1 des x de P_\lambda : {dist_x_moy:.3f}')
 
 
 
@@ -964,64 +1012,94 @@ obj = 'acquis'
 acquis = y
 regul = lambda_regul2
 
+idd = 0
+xxx = mes_cov[idd].x
+para = mes_cov[idd].a
+N_grille = acquis.size
+# para = np.random.random(mes_cov[idd].a.shape)
+
+
 def lasso(aa):
-    difference = acquis - phi_vecteur(aa, m_cov.x, dom, obj)
-    attache = 0.5*np.linalg.norm(difference)
+    difference = acquis - phi_vecteur(aa, xxx, dom, obj)
+    attache = 0.5*np.linalg.norm(difference)**2/N_grille
     parcimonie = regul*np.linalg.norm(aa, 1)
     return attache + parcimonie
 
 
 def grad_lasso(params):
-    a_p = params
-    x_p = m_cov.x
-    N = len(a_p)
+    aa = params
+    xx = xxx
+    N = len(aa)
     partial_a = N*[0]
-    residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+    residual = acquis - phi_vecteur(aa, xx, dom, obj)
     if obj == 'covar':
         for i in range(N):
-            gauss = gaussienne_2D(dom.X - x_p[i,0], dom.Y - x_p[i,1])
+            gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
             cov_gauss = np.outer(gauss, gauss)
-            partial_a[i] = - np.sum(cov_gauss*residual)/dom.N_ech**4 + regul
+            partial_a[i] = regul - np.sum(cov_gauss*residual)/dom.N_ech**4
         return partial_a
     elif obj == 'acquis':
         for i in range(N):
-            partial_a[i] = regul - \
-                    np.sum(gaussienne_2D(dom.X - x_p[i,0],
-                                           dom.Y - x_p[i,1])*residual)/dom.N_ech**2
+            gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+            partial_a[i] = regul - np.sum(gauss*residual)/dom.N_ech**2
         return partial_a
     else:
         raise TypeError('Unknown BLASSO target.')
 
-para = m_cov.a
-# par = np.random.random((3*4))
-
-# eps = np.sqrt(np.finfo(float).eps)
-# print(scipy.optimize.approx_fprime(par, lasso_double, eps))
-# print(grad_lasso_double(par))
 
 print('\nErreur sur le gradient : ')
 print(scipy.optimize.check_grad(lasso, grad_lasso, para))
 
+res_jac = scipy.optimize.minimize(lasso, para,
+                                  jac=grad_lasso,
+                                  options={'disp': True})
+
+# Juste pour tester si le gradient est bon
+eps = np.sqrt(np.finfo(float).eps)
+aqsf = np.linspace(-100,100,1000)
+lasso_test = [0]*len(aqsf)
+lasso_grad_test = [0]*len(aqsf)
+lasso_grad_fe = [0]*len(aqsf)
+for i in range(len(aqsf)):
+    lasso_test[i] = lasso([aqsf[i]])
+    lasso_grad_test[i] = grad_lasso([aqsf[i]])
+    lasso_grad_fe[i] = scipy.optimize.approx_fprime([aqsf[i]], lasso, eps)
+
+plt.figure(figsize=(12,12))
+plt.subplot(211)
+plt.plot(aqsf, lasso_test, label='Lasso')
+plt.grid()
+plt.legend()
+plt.subplot(212)
+plt.plot(aqsf, lasso_grad_test, color='orange', label='Grad')
+plt.plot(aqsf, lasso_grad_fe, color='green', label='Grad FE')
+plt.grid()
+plt.legend()
+
 #%% Accélération étape 8
 
+
+obj='covar'
+acquis = R_y
+regul = lambda_regul
+
+# obj = 'acquis'
+# acquis = y
+# regul = lambda_regul2
+
+
 dom = domain
-
-# obj='covar'
-# acquis = R_y
-# regul = lambda_regul
-
-obj = 'acquis'
-acquis = y
-regul = lambda_regul2
-
-
+idd = 0
+par = np.append(mes_cov[idd].a, np.reshape(mes_cov[idd].x, -1))
+N_grille = acquis.size
+# par = np.random.random(3*mes_cov[idd].N)
 
 def lasso_double(params):
     a_p = params[:int(len(params)/3)]
     x_p = params[int(len(params)/3):]
-    # Bout de code immonde, à corriger !
     x_p = x_p.reshape((len(a_p), 2))
-    attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom, obj))
+    residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+    attache = 0.5*np.linalg.norm(residual)**2/N_grille
     parcimonie = regul*np.linalg.norm(a_p, 1)
     return attache + parcimonie
 
@@ -1036,60 +1114,112 @@ def grad_lasso_double(params):
     residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
     if obj == 'covar':
         for i in range(N):
-            gauss = gaussienne_2D(dom.X - x_p[i,0], dom.Y - x_p[i,1])
+            gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
             cov_gauss = np.outer(gauss, gauss)
-            partial_a[i] = - np.sum(cov_gauss*residual)/dom.N_ech**4 + regul
+            partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
 
-            gauss_der_x = grad_gaussienne_2D(dom.X - x_p[i%2,0], dom.Y)
+            gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                               dom.Y - x_p[i, 1],
+                                               dom.X - x_p[i, 0])
             cov_der_x = np.outer(gauss_der_x, gauss)
-            partial_x[2*i] = a_p[i]*np.sum(cov_der_x*residual)/dom.N_ech**4
-            gauss_der_y = grad_gaussienne_2D(dom.X - x_p[i%2,1], dom.Y)
+            partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)/N_grille
+            gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                               dom.Y - x_p[i, 1],
+                                               dom.Y - x_p[i, 1])
             cov_der_y = np.outer(gauss_der_y, gauss)
-            partial_x[2*i+1] = a_p[i]*np.sum(cov_der_y*residual)/dom.N_ech**4
+            partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)/N_grille
+
         return(partial_a + partial_x)
     elif obj == 'acquis':
         for i in range(N):
-            partial_a[i] = regul - \
-                    np.sum(gaussienne_2D(dom.X - x_p[i,0],
-                                           dom.Y - x_p[i,1])*residual)/dom.N_ech**2
-            partial_x[2*i] = a_p[i]* \
-                            np.sum(grad_gaussienne_2D(dom.X - x_p[i,0], dom.Y) \
-                            *residual)/dom.N_ech**4
-            partial_x[2*i+1] = a_p[i]* \
-                                np.sum(grad_gaussienne_2D(dom.X, dom.Y - x_p[i,1]) \
-                                       *residual)/dom.N_ech**4
+            integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
+                                                  dom.Y - x_p[i, 1]))
+            partial_a[i] = regul - integ/N_grille
+
+            grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                dom.Y - x_p[i, 1],
+                                                dom.X - x_p[i, 0])
+            integ_x = np.sum(residual*grad_gauss_x) / N_grille
+            partial_x[2*i] = a_p[i] * integ_x
+            grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                dom.Y - x_p[i, 1],
+                                                dom.Y - x_p[i, 1])
+            integ_y = np.sum(residual*grad_gauss_y) / N_grille
+            partial_x[2*i+1] = a_p[i] * integ_y
+
         return(partial_a + partial_x)
     else:
         raise TypeError('Unknown BLASSO target.')
 
 
-par = np.append(m_moy.a, np.reshape(m_moy.x, -1)) + 0.1
-# par = np.random.random((3*4))
 
-# eps = np.sqrt(np.finfo(float).eps)
-# print(scipy.optimize.approx_fprime(par, lasso_double, eps))
-# print(grad_lasso_double(par))
+eps = np.sqrt(np.finfo(float).eps)
+print(scipy.optimize.approx_fprime(par, lasso_double, eps))
+print(grad_lasso_double(par))
 
 print('\nErreur sur le gradient : ')
 print(scipy.optimize.check_grad(lasso_double, grad_lasso_double, par))
 
-a_part = list(zip([0]*(4),[10]*(4)))
-x_part = list(zip([0]*2*(4),[1]*2*(4)))
-bounds_bfgs = a_part + x_part
-res = scipy.optimize.minimize(lasso_double, par,
-                              method='L-BFGS-B',
-                              bounds=bounds_bfgs)
-res_jac = scipy.optimize.minimize(lasso_double, par,
-                                  method='L-BFGS-B',
-                                  jac=grad_lasso_double,
-                                  bounds=bounds_bfgs,
-                                  options={'disp': False})
-# print(res)
-print(res_jac)
-print(f'\nErreur L^2 entre les deux solutions {obj} : ')
-print(np.linalg.norm(res_jac.x - res.x))
 
-# #%%
+# Juste pour tester si le gradient est bon
+eps = np.sqrt(np.finfo(float).eps)
+aqsf = np.linspace(-1,1.5,1000)
+lasso_d_test = [0]*len(aqsf)
+lasso_d_grad_test = [0]*len(aqsf)
+lasso_d_grad_fe = [0]*len(aqsf)
+for i in range(len(aqsf)):
+    evol = np.append(par[:2], aqsf[i])
+    lasso_d_test[i] = lasso_double(evol)
+    lasso_d_grad_test[i] = grad_lasso_double(evol)[2]
+    lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
+                                                      eps)[2]
+
+plt.figure(figsize=(12,12))
+plt.subplot(211)
+plt.plot(aqsf, lasso_d_test, label='D--Lasso')
+plt.grid()
+plt.legend()
+plt.subplot(212)
+plt.plot(aqsf, lasso_d_grad_test, color='orange', label='Grad')
+plt.plot(aqsf, lasso_d_grad_fe, color='green', label='Grad FE')
+plt.grid()
+plt.legend()
+
+
+# #%% Sanity check très basique : c bon
+
+
+# grille_test = np.linspace(-1, 1, 100)
+# X_t, Y_t = np.meshgrid(grille_test, grille_test)
+# plt.figure()
+# plt.imshow(grad_x_gaussienne_2D(X_t, Y_t, X_t))
+# plt.colorbar()
+# plt.figure()
+# plt.imshow(grad_y_gaussienne_2D(X_t, Y_t, Y_t))
+# plt.colorbar()
+# print(scipy.optimize.check_grad(gaussienne_eval, grad_gaussienne_2D, [1, 1]))
+
+
+# a_part = list(zip([0]*(mes_cov[idd].N),[10]*(mes_cov[idd].N)))
+# x_part = list(zip([0]*2*(mes_cov[idd].N),[1]*2*(mes_cov[idd].N)))
+# bounds_bfgs = a_part + x_part
+# res = scipy.optimize.minimize(lasso_double, par,
+#                               method='L-BFGS-B',
+#                               bounds=bounds_bfgs)
+# res_jac = scipy.optimize.minimize(lasso_double, par,
+#                                   method='L-BFGS-B',
+#                                   jac=grad_lasso_double,
+#                                   bounds=bounds_bfgs,
+#                                   options={'disp': False})
+# # print(res)
+# print(res_jac)
+# print(f'\nErreur L^2 entre les deux solutions {obj} : ')
+# print(np.linalg.norm(res_jac.x - res.x))
+
+
+
+
+# #%% Amélioration calcul certificat
 
 # X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
 # X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
