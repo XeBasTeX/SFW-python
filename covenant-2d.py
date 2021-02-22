@@ -8,7 +8,7 @@ Created on Sat Dec 26 10:34:43 2020
 
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
-__saveFig__ = False
+__saveFig__ = True
 __saveVid__ = False
 __deboggage__ = False
 
@@ -32,17 +32,16 @@ type_bruits = 'gauss'
 niveau_bruits = 3e-1 # sigma du bruit
 b_fond = 5.0
 
-N_ECH = 2**4 # Taux d'échantillonnage
+N_ECH = 2**5 # Taux d'échantillonnage
 X_GAUCHE = 0
 X_DROIT = 1 
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 
 
-
 def gaussienne(carre, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
-    expo = np.exp(-np.power(carre,2)/(2*sigma_g**2))
+    expo = np.exp(-np.power(carre, 2)/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
     # normalis = 1
     return expo/normalis
@@ -50,8 +49,8 @@ def gaussienne(carre, sigma_g=sigma):
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
-    expo = np.exp(-(np.power(X_domain,2) +
-                    np.power(Y_domain,2))/(2*sigma_g**2))
+    expo = np.exp(-(np.power(X_domain, 2) +
+                    np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
     # normalis = 1
     return expo/normalis
@@ -112,21 +111,17 @@ class Domain:
         self.X = X_domain
         self.Y = Y_domain
 
-
     def get_domain(self):
         return(self.X, self.Y)
-
 
     def compute_square_mesh(self):
         return np.meshrgrid(self.X_grid)
 
-
     def big(self):
         grid_big = np.linspace(self.x_gauche-self.x_droit, self.x_droit,
-                                 2*self.N_ech)
+                               2*self.N_ech - 1)
         X_big, Y_big = np.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
-
 
     def certif(self):
         X_grid_certif = np.linspace(self.x_gauche, self.x_droit, self.N_ech+1)
@@ -141,10 +136,8 @@ class Bruits2D:
         self.niveau = niveau
         self.type = type_de_bruits
 
-
     def get_fond(self):
         return self.fond
-
 
     def get_nv(self):
         return self.niveau
@@ -167,14 +160,12 @@ class Mesure2D:
             self.a = np.array(amplitude)
         self.N = len(amplitude)
 
-
     def __add__(self, m):
         '''Hieher : il faut encore régler l'addition pour les mesures au même
         position, ça vaudrait le coup de virer les duplicats'''
         a_new = np.append(self.a, m.a)
         x_new = np.array(list(self.x) + list(m.x))
         return Mesure2D(a_new, x_new)
-
 
     def __eq__(self, m):
         if m == 0 and (self.a == [] and self.x == []):
@@ -183,10 +174,8 @@ class Mesure2D:
             return self.__dict__ == m.__dict__
         return False
 
-
     def __ne__(self, m):
         return not self.__eq__(m)
-
 
     def __str__(self):
         '''Donne les infos importantes sur la mesure'''
@@ -194,7 +183,6 @@ class Mesure2D:
         positions = np.round(self.x, 3)
         return(f"{self.N} Diracs \nAmplitudes : {amplitudes}" +
                f"\nPositions : {positions}")
-
 
     def kernel(self, X_domain, Y_domain, noyau='gaussienne'):
         '''Applique un noyau à la mesure discrète.
@@ -204,15 +192,14 @@ class Mesure2D:
         a = self.a
         acquis = X_domain*0
         if noyau == 'gaussienne':
-            for i in range(0,N):
-                D = (np.sqrt(np.power(X_domain - x[i,0],2)
-                             + np.power(Y_domain - x[i,1],2)))
+            for i in range(0, N):
+                D = (np.sqrt(np.power(X_domain - x[i, 0], 2)
+                             + np.power(Y_domain - x[i, 1], 2)))
                 acquis += a[i]*gaussienne(D)
             return acquis
         if noyau == 'laplace':
             raise TypeError("Pas implémenté")
         raise NameError("Unknown kernel")
-
 
     def covariance_kernel(self, X_domain, Y_domain):
         '''Noyau de covariance associée à la mesure'''
@@ -223,13 +210,12 @@ class Mesure2D:
         taille_y = np.size(Y_domain)
         acquis = np.zeros((taille_x, taille_y))
         for i in range(0, N):
-            D = (np.sqrt(np.power(X_domain - x[i,0],2) +
-                         np.power(Y_domain - x[i,1],2)))
+            D = (np.sqrt(np.power(X_domain - x[i, 0], 2) +
+                         np.power(Y_domain - x[i, 1], 2)))
             noyau_u = gaussienne(D)
             noyau_v = gaussienne(D)
             acquis += a[i]*np.outer(noyau_u, noyau_v)
         return acquis
-
 
     def acquisition(self, X_domain, Y_domain, echantillo, fond, nv,
                     bruits='unif'):
@@ -246,11 +232,10 @@ class Mesure2D:
             acquis = simul + w + fond
             return acquis
         if bruits == 'poisson':
-            w = np.random.poisson(nv, size=(echantillo,echantillo))
+            w = np.random.poisson(nv, size=(echantillo, echantillo))
             simul = w*self.kernel(X_domain, Y_domain, noyau='gaussienne')
             acquis = simul + fond
         raise TypeError
-
 
     def graphe(self, X_domain, Y_domain, lvl=50):
         '''Trace le contourf de la mesure'''
@@ -263,7 +248,6 @@ class Mesure2D:
         plt.colorbar()
         plt.grid()
         plt.show()
-
 
     def torus(self, X_domain, current_fig=False, subplot=False):
         '''Mesure placée sur le tore si dim(cadre) = 1'''
@@ -282,13 +266,13 @@ class Mesure2D:
         a_z_torus = self.a
 
         # ax.plot((0,0),(0,0), (0,1), '-k', label='z-axis')
-        ax.plot(x_torus,y_torus, 0, '-k', label=r'$\mathbb{S}_1$')
-        ax.plot(a_x_torus,a_y_torus, a_z_torus,
+        ax.plot(x_torus, y_torus, 0, '-k', label=r'$\mathbb{S}_1$')
+        ax.plot(a_x_torus, a_y_torus, a_z_torus,
                 'o', label=r'$m_{a,x}$', color='orange')
 
         for i in range(self.N):
-            ax.plot((a_x_torus[i],a_x_torus[i]), (a_y_torus[i],a_y_torus[i]),
-                    (0,a_z_torus[i]), '--r', color='orange')
+            ax.plot((a_x_torus[i], a_x_torus[i]), (a_y_torus[i], a_y_torus[i]),
+                    (0, a_z_torus[i]), '--r', color='orange')
 
         ax.set_xlabel('$X$')
         ax.set_ylabel('$Y$')
@@ -296,14 +280,12 @@ class Mesure2D:
         ax.set_title(r'Mesure sur $\mathbb{S}_1$', fontsize=20)
         ax.legend()
 
-
     def tv(self):
         '''Renvoie 0 si la mesure est vide : hierher à vérifier'''
         try:
             return np.linalg.norm(self.a, 1)
         except ValueError:
             return 0
-
 
     def energie(self, X_domain, Y_domain, acquis, regul, obj='covar',
                 bruits='gauss'):
@@ -336,7 +318,6 @@ class Mesure2D:
             raise TypeError("Unknown kernel")
         raise TypeError("Unknown noise")
 
-
     def prune(self, tol=1e-3):
         '''Retire les Dirac avec zéro d'amplitude'''
         # nnz = np.count_nonzero(self.a)
@@ -352,12 +333,13 @@ class Mesure2D:
 def mesure_aleatoire(N):
     '''Créé une mesure aléatoire de N pics d'amplitudes aléatoires comprises
     entre 0,5 et 1,5'''
-    x = np.round(np.random.rand(N,2), 2)
-    a = np.round(0.5 + np.random.rand(1,N), 2)[0]
+    x = np.round(np.random.rand(N, 2), 2)
+    a = np.round(0.5 + np.random.rand(1, N), 2)[0]
     return Mesure2D(a, x)
 
 # m = Mesure([1,1.1,0,1.5],[2,88,3,8])
 # print(m.prune())
+
 
 def phi(m, dom, obj='covar'):
     '''Créé le résultat d'un opérateur d'acquisition à partir de la mesure m'''
@@ -405,7 +387,7 @@ def phi_vecteur(a, x, dom, obj='covar'):
 #                 D_decal = (np.sqrt(np.power(x_decal-X_domain,2)
 #                                    + np.power(y_decal-Y_domain,2)))
 #                 return gaussienne(D_decal)
-   
+
 
 def phiAdjointSimps(acquis, dom, obj='covar'):
     '''Hierher débugger ; taille_x et taille_y pas implémenté'''
@@ -419,8 +401,8 @@ def phiAdjointSimps(acquis, dom, obj='covar'):
     if obj == 'covar':
         for i in range(taille_x):
             for j in range(taille_y):
-                x_decal = X_domain[i,j]
-                y_decal = Y_domain[i,j]
+                x_decal = X_domain[i, j]
+                y_decal = Y_domain[i, j]
                 convol = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain)
                 noyau = np.outer(convol, convol)
                 X_range_integ = np.linspace(dom.x_gauche, dom.x_droit,
@@ -428,18 +410,18 @@ def phiAdjointSimps(acquis, dom, obj='covar'):
                 Y_range_integ = np.linspace(dom.x_gauche, dom.x_droit,
                                             ech_y_square)
                 integ_x = integrate.trapz(acquis * noyau, x=X_range_integ)
-                eta[i,j] = integrate.trapz(integ_x, x=Y_range_integ)
+                eta[i, j] = integrate.trapz(integ_x, x=Y_range_integ)
         return eta
     if obj == 'acquis':
         for i in range(taille_x):
             for j in range(taille_y):
-                x_decal = X_domain[i,j]
-                y_decal = Y_domain[i,j]
-                D_decal = (np.sqrt(np.power(x_decal-X_domain,2)
-                                   + np.power(y_decal-Y_domain,2)))
+                x_decal = X_domain[i, j]
+                y_decal = Y_domain[i, j]
+                D_decal = (np.sqrt(np.power(x_decal-X_domain, 2)
+                                   + np.power(y_decal-Y_domain, 2)))
                 integ_x = integrate.simps(acquis * gaussienne(D_decal),
                                           x=dom.X_grid)
-                eta[i,j] = integrate.simps(integ_x, x=dom.X_grid)
+                eta[i, j] = integrate.simps(integ_x, x=dom.X_grid)
         return eta
     raise TypeError
 
@@ -451,9 +433,9 @@ def phiAdjoint(acquis, dom, obj='covar'):
     if obj == 'covar':
         (X_big, Y_big) = dom.big()
         h_vec = gaussienne_2D(X_big, Y_big)
-        convol_row = scipy.signal.convolve(acquis, h_vec, 'same').T
-        adj = np.diag(scipy.signal.convolve(convol_row, h_vec, 'same'))
-        eta = adj.reshape(N_ech, N_ech)/N_ech**4
+        convol_row = scipy.signal.convolve2d(acquis, h_vec, 'same').T/N_ech**2
+        adj = np.diag(scipy.signal.convolve2d(convol_row, h_vec, 'same'))
+        eta = adj.reshape(N_ech, N_ech)/N_ech**2
         return eta
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
@@ -465,8 +447,6 @@ def phiAdjoint(acquis, dom, obj='covar'):
 
 def etak(mesure, acquis, dom, regul, obj='covar'):
     r'''Certificat $\eta$ assicé à la mesure'''
-    # eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj),
-    #                          dom, obj)
     eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
@@ -480,8 +460,8 @@ def pile_aquisition(m, dom, fond, nv, bruits='gauss'):
     for t in range(T_ech):
         a_tmp = (np.random.rand(N_mol))*m.a
         m_tmp = Mesure2D(a_tmp, m.x)
-        acquis_temporelle[t,:] = m_tmp.acquisition(dom.X, dom.Y, taille, fond,
-                                                   nv, bruits)
+        acquis_temporelle[t, :] = m_tmp.acquisition(dom.X, dom.Y, taille, fond,
+                                                    nv, bruits)
     return acquis_temporelle
 
 
@@ -489,7 +469,7 @@ def covariance_pile(stack, stack_mean):
     '''Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne'''
     covar = np.zeros((len(stack[0])**2, len(stack[0])**2))
     for i in range(len(stack)):
-        covar += np.outer(stack[i,:] - stack_mean, stack[i,:] - stack_mean)
+        covar += np.outer(stack[i, :] - stack_mean, stack[i, :] - stack_mean)
     return covar/len(stack-1)   # T-1 ou T hierher ?
 
 
@@ -498,16 +478,16 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
     '''y acquisition et nIter nombre d'itérations
     mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
     un vecteur qui contient les mesure_k, mesure à la k-ième itération'''
-    N_ech_y = dom.N_ech # hierher à adapter
+    N_ech_y = dom.N_ech  # hierher à adapter
     N_grille = dom.N_ech**2
     if obj == 'covar':
         N_grille = N_grille**2
     X_domain = dom.X
     Y_domain = dom.Y
-    a_k = np.empty((0,0))
-    x_k = np.empty((0,0))
+    a_k = np.empty((0, 0))
+    x_k = np.empty((0, 0))
     mesure_k = Mesure2D()
-    x_k_demi = np.empty((0,0))
+    x_k_demi = np.empty((0, 0))
     Nk = 0                      # Taille de la mesure discrète
     if mesParIter:
         mes_vecteur = np.array([])
@@ -518,14 +498,15 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         certif_abs = np.abs(eta_V_k)
         x_star_index = np.unravel_index(np.argmax(certif_abs, axis=None),
                                         eta_V_k.shape)
-        x_star = np.array(x_star_index)[::-1]/N_ech_y # hierher passer de l'idx à xstar
+        # hierher passer de l'idx à xstar
+        x_star = np.array(x_star_index)[::-1]/N_ech_y
         print(fr'* x^* index {x_star} max ' +
               fr'à {np.round(certif_abs[x_star_index], 2)}')
 
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
             nrj_vecteur[k] = mesure_k.energie(X_domain, Y_domain, acquis,
-                                               regul, obj)
+                                              regul, obj)
             # print(f'* Énergie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
             if mesParIter:
@@ -544,7 +525,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         # On résout LASSO (étape 7)
         def lasso(aa):
             difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
-            attache = 0.5*np.linalg.norm(difference)**2
+            attache = 0.5*np.linalg.norm(difference)**2/N_grille
             parcimonie = regul*np.linalg.norm(aa, 1)
             return attache + parcimonie
 
@@ -556,14 +537,14 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             residual = acquis - phi_vecteur(aa, xx, dom, obj)
             if obj == 'covar':
                 for i in range(N):
-                    gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1])
                     cov_gauss = np.outer(gauss, gauss)
                     normalis = dom.N_ech**4
                     partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
                 return partial_a
             elif obj == 'acquis':
                 for i in range(N):
-                    gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1])
                     normalis = dom.N_ech**2
                     partial_a[i] = regul - np.sum(gauss*residual)/normalis
                 return partial_a
@@ -575,8 +556,9 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
                                       options={'disp': __deboggage__})
         a_k_demi = res.x
 
-        print('* x_k_demi : ' + str(np.round(x_k_demi,2)))
-        print('* a_k_demi : ' + str(np.round(a_k_demi,2)))
+        # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
+        # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
+        print('* Optim convexe')
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
@@ -585,8 +567,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             x_p = params[int(len(params)/3):]
             # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
-            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom, 
-                                                              obj))**2
+            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom,
+                                                              obj))**2/N_grille
             parcimonie = regul*np.linalg.norm(a_p, 1)
             return attache + parcimonie
 
@@ -602,57 +584,56 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
                 for i in range(N):
                     gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
                     cov_gauss = np.outer(gauss, gauss)
-                    partial_a[i] = regul - np.sum(cov_gauss*residual)
-        
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
+
                     gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.X - x_p[i, 0])
                     cov_der_x = np.outer(gauss_der_x, gauss)
-                    partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)
+                    partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual) / (N_grille)
                     gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.Y - x_p[i, 1])
                     cov_der_y = np.outer(gauss_der_y, gauss)
-                    partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)
-        
+                    partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual) / (N_grille)
+
                 return(partial_a + partial_x)
             elif obj == 'acquis':
                 for i in range(N):
                     integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
                                                           dom.Y - x_p[i, 1]))
                     partial_a[i] = regul - integ/N_grille
-        
+
                     grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                         dom.Y - x_p[i, 1],
                                                         dom.X - x_p[i, 0])
-                    integ_x = np.sum(residual*grad_gauss_x) / N_grille
+                    integ_x = np.sum(residual*grad_gauss_x) / (N_grille)
                     partial_x[2*i] = a_p[i] * integ_x
                     grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                         dom.Y - x_p[i, 1],
                                                         dom.Y - x_p[i, 1])
-                    integ_y = np.sum(residual*grad_gauss_y)
+                    integ_y = np.sum(residual*grad_gauss_y) / (N_grille)
                     partial_x[2*i+1] = a_p[i] * integ_y
-        
+
                 return(partial_a + partial_x)
             else:
                 raise TypeError('Unknown BLASSO target.')
 
-
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
         initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-        a_part = list(zip([0]*(Nk+1),[100]*(Nk+1)))
-        x_part = list(zip([0]*2*(Nk+1),[1]*2*(Nk+1)))
+        a_part = list(zip([0]*(Nk+1), [30]*(Nk+1)))
+        x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
         bounds_bfgs = a_part + x_part
-        res = scipy.optimize.minimize(lasso_double, initial_guess,
+        tes = scipy.optimize.minimize(lasso_double, initial_guess,
                                       method='L-BFGS-B',
-                                       jac=grad_lasso_double,
+                                      jac=grad_lasso_double,
                                       bounds=bounds_bfgs,
                                       options={'disp': __deboggage__})
-        a_k_plus = (res.x[:int(len(res.x)/3)])
-        x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
-        print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
-        print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
+        a_k_plus = (tes.x[:int(len(tes.x)/3)])
+        x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
+        # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
+        # print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
 
         # Mise à jour des paramètres avec retrait des Dirac nuls
         mesure_k = Mesure2D(a_k_plus, x_k_plus)
@@ -660,6 +641,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         a_k = mesure_k.a
         x_k = mesure_k.x
         Nk = mesure_k.N
+        print(f'* Optim non-convexe : {Nk} Diracs')
 
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(X_domain, Y_domain, acquis, regul,
@@ -718,7 +700,7 @@ def partial_wasserstein_metric(mes, m_zer):
 def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
     if m.a.size > 0:
-        fig = plt.figure(figsize=(15,12))
+        fig = plt.figure(figsize=(15, 12))
         # fig = plt.figure(figsize=(13,10))
         fig.suptitle(fr'Reconstruction en bruits {type_bruits} ' +
                      fr'pour $\lambda = {lambda_regul:.0e}$ ' +
@@ -729,9 +711,9 @@ def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
         for c in cont1.collections:
             c.set_edgecolor("face")
         plt.colorbar()
-        plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+        plt.scatter(m_ax0.x[:, 0], m_ax0.x[:, 1], marker='x',
                     label='GT spikes')
-        plt.scatter(m.x[:,0], m.x[:,1], marker='+',
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+',
                     label='Recovered spikes')
         plt.legend(loc=2)
 
@@ -756,8 +738,7 @@ def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
 
         plt.subplot(223)
         # plt.pcolormesh(X, Y, certificat_V, shading='gouraud', cmap='seismic')
-        X_c, Y_c = dom.certif()
-        cont3 = plt.contourf(certif, 100, cmap='seismic')
+        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='seismic')
         for c in cont3.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -790,7 +771,7 @@ def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
 def gif_pile(pile_acquis, m_zer, dom, video='gif', title=None):
     '''Hierher à terminer de débogger'''
     # ax, fig = plt.subplots(figsize=(10,10))
-    fig = plt.figure(figsize=(8,8))
+    fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
     # ax.set(xlim=(0, 1), ylim=(0, 1))
     cont_pile = ax.contourf(dom.X, dom.Y, y, 100, cmap='seismic')
@@ -805,9 +786,9 @@ def gif_pile(pile_acquis, m_zer, dom, video='gif', title=None):
             return
         ax.clear()
         ax.set_aspect('equal', adjustable='box')
-        ax.contourf(dom.X, dom.Y, pile_acquis[k,:], 100,cmap='seismic')
-        ax.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-               s=2*dom.N_ech, label='GT spikes')
+        ax.contourf(dom.X, dom.Y, pile_acquis[k, :], 100, cmap='seismic')
+        ax.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                   s=2*dom.N_ech, label='GT spikes')
         ax.set_xlabel('X', fontsize=25)
         ax.set_ylabel('Y', fontsize=25)
         ax.set_title(f'Acquisition numéro = {k}', fontsize=30)
@@ -907,13 +888,14 @@ domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 # X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
 # X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
 
-X_grid_certif = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, N_ECH+1)
-X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
+# X_grid_certif = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, N_ECH+1)
+# X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
 
-m_ax0 = Mesure2D([8,10,6,7],[[0.2,0.23],[0.80,0.35],[0.33,0.82],[0.30,0.30]])
-# m_ax0 = mesure_aleatoire(9)
+# m_ax0 = Mesure2D([8,10,6,7,9],
+#                   [[0.2,0.23],[0.80,0.35],[0.33,0.82],[0.30,0.30],[0.23,0.38]])
+m_ax0 = mesure_aleatoire(25)
 
-T_ech = 50        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
+T_ech = 500        # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
 
 pile = pile_aquisition(m_ax0, domain, b_fond, niveau_bruits,
                        bruits=type_bruits)
@@ -924,7 +906,7 @@ R_x = m_ax0.covariance_kernel(domain.X, domain.Y)
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
 lambda_regul = 1e-5 # Param de relaxation pour SFW R_y
-lambda_regul2 = 7e-2 # Param de relaxation pour SFW y_moy
+lambda_regul2 = 3e-3 # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
 # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
@@ -994,13 +976,6 @@ if __saveVid__:
 
 
 #%% Accélération étape 7
-
-# # Construct the problem.
-# a = cp.Variable(m_cov.N)
-# error = cp.sum_squares(y  - phi_vecteur(a, m_cov.x, domain))
-# obj = cp.Minimize(error + lambda_regul*cp.norm(a, 1))
-# prob = cp.Problem(obj)
-
 
 dom = domain
 
@@ -1079,20 +1054,20 @@ plt.legend()
 #%% Accélération étape 8
 
 
-obj='covar'
-acquis = R_y
-regul = lambda_regul
+# obj = 'covar'
+# acquis = R_y
+# regul = lambda_regul
 
-# obj = 'acquis'
-# acquis = y
-# regul = lambda_regul2
+obj = 'acquis'
+acquis = y
+regul = lambda_regul2
 
 
 dom = domain
 idd = 0
 par = np.append(mes_cov[idd].a, np.reshape(mes_cov[idd].x, -1))
+par = np.random.random(3*mes_cov[idd].N)
 N_grille = acquis.size
-# par = np.random.random(3*mes_cov[idd].N)
 
 def lasso_double(params):
     a_p = params[:int(len(params)/3)]
@@ -1119,13 +1094,13 @@ def grad_lasso_double(params):
             partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
 
             gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
-                                               dom.Y - x_p[i, 1],
-                                               dom.X - x_p[i, 0])
+                                                dom.Y - x_p[i, 1],
+                                                dom.X - x_p[i, 0])
             cov_der_x = np.outer(gauss_der_x, gauss)
             partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)/N_grille
             gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
-                                               dom.Y - x_p[i, 1],
-                                               dom.Y - x_p[i, 1])
+                                                dom.Y - x_p[i, 1],
+                                                dom.Y - x_p[i, 1])
             cov_der_y = np.outer(gauss_der_y, gauss)
             partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)/N_grille
 
@@ -1160,30 +1135,34 @@ print(grad_lasso_double(par))
 print('\nErreur sur le gradient : ')
 print(scipy.optimize.check_grad(lasso_double, grad_lasso_double, par))
 
+res_jac = scipy.optimize.minimize(lasso_double, par,
+                                  jac=grad_lasso_double,
+                                  options={'disp': True})
 
-# Juste pour tester si le gradient est bon
-eps = np.sqrt(np.finfo(float).eps)
-aqsf = np.linspace(-1,1.5,1000)
-lasso_d_test = [0]*len(aqsf)
-lasso_d_grad_test = [0]*len(aqsf)
-lasso_d_grad_fe = [0]*len(aqsf)
-for i in range(len(aqsf)):
-    evol = np.append(par[:2], aqsf[i])
-    lasso_d_test[i] = lasso_double(evol)
-    lasso_d_grad_test[i] = grad_lasso_double(evol)[2]
-    lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
-                                                      eps)[2]
 
-plt.figure(figsize=(12,12))
-plt.subplot(211)
-plt.plot(aqsf, lasso_d_test, label='D--Lasso')
-plt.grid()
-plt.legend()
-plt.subplot(212)
-plt.plot(aqsf, lasso_d_grad_test, color='orange', label='Grad')
-plt.plot(aqsf, lasso_d_grad_fe, color='green', label='Grad FE')
-plt.grid()
-plt.legend()
+# # Juste pour tester si le gradient est bon
+# eps = np.sqrt(np.finfo(float).eps)
+# aqsf = np.linspace(-1,1.5,1000)
+# lasso_d_test = [0]*len(aqsf)
+# lasso_d_grad_test = [0]*len(aqsf)
+# lasso_d_grad_fe = [0]*len(aqsf)
+# for i in range(len(aqsf)):
+#     evol = np.append(par[:2], aqsf[i])
+#     lasso_d_test[i] = lasso_double(evol)
+#     lasso_d_grad_test[i] = grad_lasso_double(evol)[2]
+#     lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
+#                                                       eps)[2]
+
+# plt.figure(figsize=(12,12))
+# plt.subplot(211)
+# plt.plot(aqsf, lasso_d_test, label='D--Lasso')
+# plt.grid()
+# plt.legend()
+# plt.subplot(212)
+# plt.plot(aqsf, lasso_d_grad_test, color='orange', label='Grad')
+# plt.plot(aqsf, lasso_d_grad_fe, color='green', label='Grad FE')
+# plt.grid()
+# plt.legend()
 
 
 # #%% Sanity check très basique : c bon

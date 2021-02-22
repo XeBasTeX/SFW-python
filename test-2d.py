@@ -8,9 +8,9 @@ Created on Fri Jan  8 17:01:05 2021
 
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
-__saveFig__ = True
+__saveFig__ = False
 __saveVid__ = False
-__deboggage__ = False
+__deboggage__ = True
 
 
 import numpy as np
@@ -179,7 +179,8 @@ class Mesure2D:
 
 
     def covariance_kernel(self, X_domain, Y_domain):
-        '''Noyau de covariance associée à la mesure'''
+        '''Noyau de covariance associée à la mesure.
+        Pris en charge : convolution  à noyau gaussien.'''
         N = self.N
         x = self.x
         a = self.a
@@ -187,8 +188,8 @@ class Mesure2D:
         taille_y = np.size(Y_domain)
         acquis = np.zeros((taille_x, taille_y))
         for i in range(0, N):
-            D = (np.sqrt(np.power(X_domain - x[i,0],2) +
-                         np.power(Y_domain - x[i,1],2)))
+            D = (np.sqrt(np.power(X_domain - x[i, 0], 2) +
+                         np.power(Y_domain - x[i, 1], 2)))
             noyau_u = gaussienne(D)
             noyau_v = gaussienne(D)
             acquis += a[i]*np.outer(noyau_u, noyau_v)
@@ -286,7 +287,7 @@ class Mesure2D:
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
         elif bruits in ('gauss', 'unif'):
-            normalis = acquis.size
+            normalis = 1
             if obj == 'covar':
                 R_nrj = self.covariance_kernel(X_domain, Y_domain)
                 attache = 0.5*np.linalg.norm(acquis - R_nrj)**2/normalis
@@ -311,6 +312,19 @@ class Mesure2D:
         nnz_x = nnz_x[nnz]
         m = Mesure2D(nnz_a, nnz_x)
         return m
+
+
+    def prune_spurious(self, tol=1e-2):
+        a = np.array([])
+        x = np.array([])
+        for i in range(self.N):
+          for j in range(self.N):
+              if i != j and np.linalg.norm(x[i] - x[j]) < tol:
+                  a = np.delete(self.a[i], 1, 0)
+                  x = np.delete(self.x[i], 1, 0)
+        self.a = a
+        self.x = x
+        self.N = len(a)
 
 
 def mesure_aleatoire(N):
@@ -487,7 +501,7 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
         # On résout LASSO (étape 7)
         def lasso(aa):
             difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
-            attache = 0.5*np.linalg.norm(difference)**2
+            attache = 0.5*np.linalg.norm(difference)**2/N_grille
             parcimonie = regul*np.linalg.norm(aa, 1)
             return attache + parcimonie
 
@@ -528,7 +542,7 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
             x_p = params[int(len(params)/3):]
             # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
-            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom, 
+            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom,
                                                               obj))**2
             parcimonie = regul*np.linalg.norm(a_p, 1)
             return attache + parcimonie
@@ -545,8 +559,8 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
                 for i in range(N):
                     gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
                     cov_gauss = np.outer(gauss, gauss)
-                    partial_a[i] = regul - np.sum(cov_gauss*residual)
-        
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
+
                     gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.X - x_p[i, 0])
@@ -557,43 +571,41 @@ def SFW(acquis, dom, regul, nIter=5, mesParIter=False, obj='covar'):
                                                        dom.Y - x_p[i, 1])
                     cov_der_y = np.outer(gauss_der_y, gauss)
                     partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)
-        
                 return(partial_a + partial_x)
             elif obj == 'acquis':
                 for i in range(N):
                     integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
                                                           dom.Y - x_p[i, 1]))
                     partial_a[i] = regul - integ/N_grille
-        
+
                     grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                         dom.Y - x_p[i, 1],
                                                         dom.X - x_p[i, 0])
-                    integ_x = np.sum(residual*grad_gauss_x) / N_grille
+                    integ_x = np.sum(residual*grad_gauss_x)
                     partial_x[2*i] = a_p[i] * integ_x
                     grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                         dom.Y - x_p[i, 1],
                                                         dom.Y - x_p[i, 1])
                     integ_y = np.sum(residual*grad_gauss_y)
                     partial_x[2*i+1] = a_p[i] * integ_y
-        
+
                 return(partial_a + partial_x)
             else:
                 raise TypeError('Unknown BLASSO target.')
 
-
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
         initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-        a_part = list(zip([0]*(Nk+1),[10]*(Nk+1)))
-        x_part = list(zip([0]*2*(Nk+1),[1]*2*(Nk+1)))
+        a_part = list(zip([0]*(Nk+1), [10]*(Nk+1)))
+        x_part = list(zip([0]*2*(Nk+1), [1]*2*(Nk+1)))
         bounds_bfgs = a_part + x_part
-        res = scipy.optimize.minimize(lasso_double, initial_guess,
+        tes = scipy.optimize.minimize(lasso_double, initial_guess,
                                       method='L-BFGS-B',
                                       jac=grad_lasso_double,
                                       bounds=bounds_bfgs,
                                       options={'disp': __deboggage__})
-        a_k_plus = (res.x[:int(len(res.x)/3)])
-        x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
+        a_k_plus = (tes.x[:int(len(tes.x)/3)])
+        x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
         # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
         # print('* x_k_plus : ' + str(np.round(x_k_plus, 2)))
 
@@ -897,7 +909,7 @@ bas_red = 6
 haut_red = 26
 reduc = VRAI_N_ECH/(haut_red - bas_red)
 
-emitters_loc = np.genfromtxt('sofi/emitters.csv', delimiter=',')
+emitters_loc = np.fliplr(np.genfromtxt('sofi/emitters.csv', delimiter=','))
 emitters_loc /= VRAI_N_ECH
 emitters_loc_test = [el for el in emitters_loc
                      if bas_red/VRAI_N_ECH <
@@ -905,7 +917,7 @@ emitters_loc_test = [el for el in emitters_loc
                      haut_red/VRAI_N_ECH]
 
 emitters_loc_test = np.vstack(emitters_loc_test) - bas_red/VRAI_N_ECH
-emitters_loc_test = reduc*emitters_loc_test[:, [1, 0]]
+emitters_loc_test = reduc*emitters_loc_test
 m_ax0 = Mesure2D(np.ones(emitters_loc_test.shape[0]), emitters_loc_test)
 # plot_results(m_ax0, domaine, nrj_cov, certif_V, y)
 
@@ -929,7 +941,7 @@ FWMH = 2.2875/VRAI_N_ECH
 sigma = FWMH/(2*np.sqrt(2*np.log(2)))
 lambda_reg = 1e-9  # Param de relaxation pour Q_\lambda(y)
 lambda_regul2 = 3e-5  # Param de relaxation pour P_\lambda(y_bar)
-iteration = m_ax0.N + 1
+iteration = m_ax0.N
 
 
 # Reconstruction
@@ -941,7 +953,6 @@ iteration = m_ax0.N + 1
 print(f'm_Mx : {m_cov.N} Diracs')
 print(f'm_ax : {m_moy.N} Diracs')
 print(f'm_ax0 : {m_ax0.N} Diracs')
-# print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 
 # Métrique de déconvolution : distance de Wasserstein
 try:
@@ -992,4 +1003,19 @@ if __saveVid__ and m_cov.a.size > 0:
 # GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 # X, Y = np.meshgrid(GRID, GRID)
 # domaine = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
+
+# #%%
+
+# emitters_loc = np.fliplr(np.genfromtxt('sofi/emitters.csv', delimiter=','))
+# emitters_loc /= VRAI_N_ECH
+# m_ax0 = Mesure2D(np.ones(emitters_loc_test.shape[0]), emitters_loc_test)
+
+
+# cont1 = plt.contourf(domaine.X, domaine.Y, y, 100, cmap='seismic')
+# for c in cont1.collections:
+#     c.set_edgecolor("face")
+# plt.colorbar()
+# plt.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
+#             label='GT spikes')
+
 

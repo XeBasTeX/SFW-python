@@ -29,7 +29,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 np.random.seed(80)
 sigma = 1e-1 # écart-type de la PSF
 # lambda_regul = 1e-3 # Param de relaxation
-niveaubruits = 1e-2 # sigma du bruit
+niveau_bruits = 1e-2 # sigma du bruit
 
 N_ech = 2**5
 xgauche = 0
@@ -37,7 +37,7 @@ xdroit = 1
 X_grid = np.linspace(xgauche, xdroit, N_ech)
 X, Y = np.meshgrid(X_grid, X_grid)
 
-X_grid_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech)
+X_grid_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech - 1)
 X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
 
 X_grid_certif = np.linspace(xgauche, xdroit, N_ech+1)
@@ -208,10 +208,10 @@ def phiAdjointSimps(y, X_domain, Y_domain, noyau='gaussien'):
     return eta
 
 
-def phiAdjoint(y, X_domain, Y_domain, noyau='gaussien'):
+def phiAdjoint(acquis, X_domain, Y_domain, noyau='gaussien'):
     '''Calcul de l'adjoint par convolution '''
     out = gaussienne_2D(X_domain, Y_domain)
-    eta = scipy.signal.convolve2d(out, y, mode='valid')/(N_ech**2)
+    eta = scipy.signal.convolve2d(out, acquis, mode='valid')/(N_ech**2)
     return eta
 
 
@@ -244,17 +244,42 @@ def etak(mesure, y, X_domain, Y_domain, regul):
                              X_big, Y_big)
     return eta
 
-def gaussienne(domain, sigma=1e-1):
+def gaussienne(carre, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
-    return np.sqrt(2*np.pi*sigma**2)*np.exp(-np.power(domain,2)/(2*sigma**2))
+    expo = np.exp(-np.power(carre, 2)/(2*sigma_g**2))
+    normalis = sigma_g * (2*np.pi)
+    # normalis = 1
+    return expo/normalis
 
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
-    expo = np.exp(-(np.power(X_domain,2) +
-                    np.power(Y_domain,2))/(2*sigma_g**2))
-    normalis = np.sqrt(2*np.pi*sigma_g**2)
-    return normalis*expo
+    expo = np.exp(-(np.power(X_domain, 2) +
+                    np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g * (2*np.pi)
+    # normalis = 1
+    return expo/normalis
+
+
+def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g=sigma):
+    '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
+    rule derivation'''
+    expo = np.exp(-(np.power(X_domain, 2) +
+                    np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g**3 * (2*np.pi)
+    carre = - X_deriv
+    return carre * expo / normalis
+
+
+def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g=sigma):
+    '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
+    rule derivation'''
+    expo = np.exp(-(np.power(X_domain, 2) +
+                    np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g**3 * (2*np.pi)
+    carre = - Y_deriv
+    return carre * expo / normalis
+
 
 
 def ideal_lowpass(domain, fc):
@@ -321,11 +346,38 @@ def SFW(y, regul=1e-5, nIter=5, mesParIter=False):
                 parcimonie = regul*np.linalg.norm(a_p, 1)
                 return(attache + parcimonie)
 
+            def grad_lasso_double(params):
+                a_p = params[:int(len(params)/3)]
+                x_p = params[int(len(params)/3):]
+                x_p = x_p.reshape((len(a_p), 2))
+                N = len(a_p)
+                partial_a = N*[0]
+                partial_x = 2*N*[0]
+                residual = y - phi_vecteur(a_p,x_p,X,Y)
+                for i in range(N):
+                    integ = np.sum(residual*gaussienne_2D(X - x_p[i, 0],
+                                                          Y - x_p[i, 1]))
+                    partial_a[i] = regul - integ/N_ech
+
+                    grad_gauss_x = grad_x_gaussienne_2D(X - x_p[i, 0],
+                                                        Y - x_p[i, 1],
+                                                        X - x_p[i, 0])
+                    integ_x = np.sum(residual*grad_gauss_x) / (2*N_ech)
+                    partial_x[2*i] = a_p[i] * integ_x
+                    grad_gauss_y = grad_y_gaussienne_2D(X - x_p[i, 0],
+                                                        Y - x_p[i, 1],
+                                                        Y - x_p[i, 1])
+                    integ_y = np.sum(residual*grad_gauss_y)
+                    partial_x[2*i+1] = a_p[i] * integ_y / (2*N_ech)
+
+                return(partial_a + partial_x)
+
             # On met la graine au format array pour scipy...minimize
             # il faut en effet que ça soit un vecteur
             initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
             res = scipy.optimize.minimize(lasso_double, initial_guess,
                                           method='BFGS',
+                                          # jac=grad_lasso_double,
                                           options={'disp': __deboggage__})
             a_k_plus = (res.x[:int(len(res.x)/3)])
             x_k_plus = (res.x[int(len(res.x)/3):]).reshape((len(a_k_plus), 2))
@@ -356,7 +408,7 @@ def plot_results(m):
     if m.a.size > 0:
         fig = plt.figure(figsize=(15,12))
         fig.suptitle(f'Reconstruction pour $\lambda = {lambda_regul:.0e}$ ' + 
-                     f'et $\sigma_B = {niveaubruits:.0e}$', fontsize=20)
+                     f'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
 
         plt.subplot(221)
         cont1 = plt.contourf(X, Y, y, 100, cmap='seismic')
@@ -383,7 +435,7 @@ def plot_results(m):
         plt.colorbar();
 
         plt.subplot(223)
-        cont3 = plt.contourf(X_certif, Y_certif, certificat_V, 100,
+        cont3 = plt.contourf(X, Y, certificat_V, 100,
                              cmap='seismic')
         for c in cont3.collections:
             c.set_edgecolor("face")
@@ -479,10 +531,10 @@ def wasserstein_metric(mes, m_zer):
 
 # m_ax0 = Mesure2D([0.5,1,0.8],[[0.25,0.25],[0.75,0.75],[0.25,0.35]])
 m_ax0 = mesureAleatoire(9)
-y = m_ax0.acquisition(X, Y, N_ech, niveaubruits)
+y = m_ax0.acquisition(X, Y, N_ech, niveau_bruits)
 
 lambda_regul = 9e-5 # Param de relaxation
-iteration = 11
+iteration = m_ax0.N
 
 # (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=iteration)
 (m_sfw, nrj_sfw, mes_sfw) = SFW(y, regul=lambda_regul, nIter=iteration,
@@ -494,7 +546,7 @@ print('On voulait retrouver m_ax0 = ' + str(m_ax0))
 y_simul = m_sfw.kernel(X,Y)
 
 wasser = wasserstein_metric(m_sfw, m_ax0)
-print(f'2-distance de Wass : {wasser:.3f}')
+print(f'Dist W_1 des x de P_\lambda : {wasser:.5f}')
 
 plot_results(m_sfw)
 if __saveVid__ == True and m_sfw.a.size > 0:
@@ -503,6 +555,89 @@ if __saveVid__ == True and m_sfw.a.size > 0:
 
 # #%%
 
+# idd = 1
+# par = np.random.random(3*mes_sfw[idd].N)
+# # par = np.append(mes_sfw[idd].a, np.reshape(mes_sfw[idd].x, -1))
+
+
+# def lasso_double(params):
+#     a_p = params[:int(len(params)/3)]  # Bout de code immonde, à corriger !
+#     x_p = params[int(len(params)/3):]
+#     x_p = x_p.reshape((len(a_p), 2))
+#     attache = 0.5*np.linalg.norm(y - phi_vecteur(a_p, x_p, X, Y))
+#     parcimonie = lambda_regul*np.linalg.norm(a_p, 1)
+#     return(attache + parcimonie)
+
+
+# def grad_lasso_double(params):
+#     a_p = params[:int(len(params)/3)]
+#     x_p = params[int(len(params)/3):]
+#     x_p = x_p.reshape((len(a_p), 2))
+#     N = len(a_p)
+#     partial_a = N*[0]
+#     partial_x = 2*N*[0]
+#     residual = y - phi_vecteur(a_p, x_p, X, Y)
+#     for i in range(N):
+#         integ = np.sum(residual*gaussienne_2D(X - x_p[i, 0],
+#                                               Y - x_p[i, 1]))
+#         partial_a[i] = lambda_regul - integ/N_ech
+
+#         grad_gauss_x = grad_x_gaussienne_2D(X - x_p[i, 0],
+#                                             Y - x_p[i, 1],
+#                                             X - x_p[i, 0])
+#         integ_x = np.sum(residual*grad_gauss_x) / N_ech/2
+#         partial_x[2*i] = a_p[i] * integ_x
+#         grad_gauss_y = grad_y_gaussienne_2D(X - x_p[i, 0],
+#                                             Y - x_p[i, 1],
+#                                             Y - x_p[i, 1])
+#         integ_y = np.sum(residual*grad_gauss_y) / N_ech/2
+#         partial_x[2*i+1] = a_p[i] * integ_y
+
+#     return(partial_a + partial_x)
+
+
+# eps = np.sqrt(np.finfo(float).eps)
+# print(scipy.optimize.approx_fprime(par, lasso_double, eps))
+# print(grad_lasso_double(par))
+
+# print('\nErreur sur le gradient : ')
+# print(scipy.optimize.check_grad(lasso_double, grad_lasso_double, par))
+
+
+# res_jac = scipy.optimize.minimize(lasso_double, par,
+#                                   jac=grad_lasso_double,
+#                                   options={'disp': True})
+
+# # Juste pour tester si le gradient est bon
+# eps = np.sqrt(np.finfo(float).eps)
+# aqsf = np.linspace(-1,1.5,1000)
+# lasso_d_test = [0]*len(aqsf)
+# lasso_d_grad_test = [0]*len(aqsf)
+# lasso_d_grad_fe = [0]*len(aqsf)
+# for i in range(len(aqsf)):
+#     evol = np.append(par[:2], aqsf[i])
+#     lasso_d_test[i] = lasso_double(evol)
+#     lasso_d_grad_test[i] = grad_lasso_double(evol)[2]
+#     lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
+#                                                       eps)[2]
+
+# plt.figure(figsize=(12,12))
+# plt.subplot(211)
+# plt.plot(aqsf, lasso_d_test, label='D--Lasso')
+# plt.grid()
+# plt.legend()
+# plt.subplot(212)
+# plt.plot(aqsf, lasso_d_grad_test, color='orange', label='Grad')
+# plt.plot(aqsf, lasso_d_grad_fe, color='green', label='Grad FE')
+# plt.grid()
+# plt.legend()
+
+
+# #%% Le phiAdjoint en Simpson ou en convol
+
+
+# X_grid_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech-1)
+# X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
 
 # out = gaussienne_2D(X_big, Y_big)
 # adj1 = scipy.signal.convolve2d(out, y, mode='valid')/(N_ech**2)

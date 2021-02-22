@@ -1,10 +1,8 @@
 # A faire
 ## Urgent
 
-- covariance est bien calculée : bien vérifier comment c'est calculer par np.outer toutefois ;
-- ça optimise correctement, mais on dirait que le certificat est transposé : à vérifier.
+- drôle de comportement quand N = 64 avec bcp trop de molécules : ça optimise étrangement (problème avec L-BFGS-B ?)
 
 ## Dans longtemps
 
 - une documentation solide
-- une classe Mesure propre
