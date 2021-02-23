@@ -55,11 +55,11 @@ lambda_regul2 = 3e-3  # Param de relaxation pour SFW y_moy
 iteration = m_ax0.N
 
 
-(m_cov, nrj_cov, mes_cov) = covenant.SFW(R_y, domain, bruits_t,
+(m_cov, nrj_cov, mes_cov) = covenant.SFW(R_y, domain,
                                          regul=lambda_regul,
                                          nIter=iteration, mesParIter=True,
                                          obj='covar')
-(m_moy, nrj_moy, mes_moy) = covenant.SFW(y_bar, domain, bruits_t,
+(m_moy, nrj_moy, mes_moy) = covenant.SFW(y_bar, domain,
                                          regul=lambda_regul2,  nIter=iteration,
                                          mesParIter=True, obj='acquis')
 

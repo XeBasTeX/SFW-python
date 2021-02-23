@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Feb 22 09:50:06 2021
+Provides the essential functions for simulating 2D discrete Radon measures
+and reconstructing those measures w.r.t to a provided acquistion
 
-@author: Bastien (https://github.com/XeBasTeX)
+@author: Bastien Laville (https://github.com/XeBasTeX)
 """
 
 __author__ = 'Bastien'
@@ -23,7 +24,24 @@ import matplotlib.pyplot as plt
 
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g):
-    '''Gaussienne centrée en 0'''
+    """
+    Gaussienne en 2D centrée en 0 normalisée.
+
+    Parameters
+    ----------
+    X_domain : ndarray
+        Grille des coordonnées X (issue de meshgrid).
+    Y_domain : ndarray
+        Grille des coordonnées Y (issue de meshgrid).
+    sigma_g : double
+        :math:`\sigma` paramètre de la gaussienne.
+
+    Returns
+    -------
+    ndarray
+        Vecteur discrétisant la gaussienne :math:`h` sur :math:`\mathcal{X}`.
+
+    """
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
@@ -32,8 +50,29 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g):
 
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g):
-    '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
-    rule derivation'''
+    """
+    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la 
+    chain rule derivation.
+
+    Parameters
+    ----------
+    X_domain : ndarray
+        Grille des coordonnées X (issue de meshgrid).
+    Y_domain : ndarray
+        Grille des coordonnées Y (issue de meshgrid).
+    X_deriv : ndarray
+        Grille des coordonnées X pour calculer la partie en :math:`x` de la
+        dérivée partielle
+    sigma_g : double
+        :math:`\sigma` paramètre de la gaussienne.
+
+    Returns
+    -------
+    ndarray
+        Vecteur discrétisant la première dérivée partielle de la gaussienne 
+        :math:`\partial_1 h` sur :math:`\mathcal{X}`.
+
+    """
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g**3 * (2*np.pi)
@@ -42,8 +81,29 @@ def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g):
 
 
 def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g):
-    '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
-    rule derivation'''
+    """
+    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la 
+    chain rule derivation.
+
+    Parameters
+    ----------
+    X_domain : ndarray
+        Grille des coordonnées X (issue de meshgrid).
+    Y_domain : ndarray
+        Grille des coordonnées Y (issue de meshgrid).
+    Y_deriv : ndarray
+        Grille des coordonnées Y pour calculer la partie en :math:`y` de la
+        dérivée partielle
+    sigma_g : double
+        :math:`\sigma` paramètre de la gaussienne.
+
+    Returns
+    -------
+    ndarray
+        Vecteur discrétisant la première dérivée partielle de la gaussienne 
+        :math:`\partial_2 h` sur :math:`\mathcal{X}`.
+
+    """
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g**3 * (2*np.pi)
@@ -56,9 +116,8 @@ def ideal_lowpass(carre, f_c):
     return np.sin((2*f_c + 1)*np.pi*carre)/np.sin(np.pi*carre)
 
 
-# Domaine
 class Domain2D:
-    def __init__(self, gauche, droit, ech, grille, X_domain, Y_domain, 
+    def __init__(self, gauche, droit, ech, grille, X_domain, Y_domain,
                  sigma_psf):
         self.x_gauche = gauche
         self.x_droit = droit
@@ -68,39 +127,58 @@ class Domain2D:
         self.Y = Y_domain
         self.sigma = sigma_psf
 
+
     def get_domain(self):
         return(self.X, self.Y)
 
+
     def compute_square_mesh(self):
+        """
+        Renvoie les grilles discrétisant le domaine :math:`\mathcal{X}` à N_ech
+
+        Returns
+        -------
+        ndarray
+            Les grilles coordonnées de x et des y.
+
+        """
         return np.meshrgrid(self.X_grid)
 
+
     def big(self):
+        """
+        Renvoie les grilles adaptées pour le calcul de la convolution discrètes 
+        (par exemple dans phiAdjoint) entre deux matrices
+
+        Returns
+        -------
+        X_big : ndarray
+                Matrice coordonnées des x
+        Y_big : ndarray
+                Matrice coordonnées des y
+
+        """
         grid_big = np.linspace(self.x_gauche-self.x_droit, self.x_droit,
                                2*self.N_ech - 1)
         X_big, Y_big = np.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
 
-    def certif(self):
-        X_grid_certif = np.linspace(self.x_gauche, self.x_droit, self.N_ech+1)
-        X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
-        return(X_certif, Y_certif)
 
-
-# Bruits
 class Bruits:
     def __init__(self, fond, niveau, type_de_bruits):
         self.fond = fond
         self.niveau = niveau
         self.type = type_de_bruits
 
+
     def get_fond(self):
         return self.fond
+
 
     def get_nv(self):
         return self.niveau
 
 
-# Mesure 2D
 class Mesure2D:
     def __init__(self, amplitude=None, position=None):
         if amplitude is None or position is None:
@@ -117,12 +195,14 @@ class Mesure2D:
             self.a = np.array(amplitude)
         self.N = len(amplitude)
 
+
     def __add__(self, m):
         '''Hieher : il faut encore régler l'addition pour les mesures au même
         position, ça vaudrait le coup de virer les duplicats'''
         a_new = np.append(self.a, m.a)
         x_new = np.array(list(self.x) + list(m.x))
         return Mesure2D(a_new, x_new)
+
 
     def __eq__(self, m):
         if m == 0 and (self.a == [] and self.x == []):
@@ -131,8 +211,10 @@ class Mesure2D:
             return self.__dict__ == m.__dict__
         return False
 
+
     def __ne__(self, m):
         return not self.__eq__(m)
+
 
     def __str__(self):
         '''Donne les infos importantes sur la mesure'''
@@ -141,9 +223,36 @@ class Mesure2D:
         return(f"{self.N} Diracs \nAmplitudes : {amplitudes}" +
                f"\nPositions : {positions}")
 
+
     def kernel(self, dom, noyau='gaussienne'):
-        '''Applique un noyau à la mesure discrète.
-        Pris en charge : convolution  à noyau gaussien.'''
+        """
+        Applique un noyau à la mesure discrète :math:`m`.
+        Pris en charge : convolution  à noyau gaussien.
+
+        Parameters
+        ----------
+        dom : :py:class:`covenant.Domain2D`
+            Domaine sur lequel va être calculé l'acquisition de :math:`m` dans 
+            :math:`\\mathrm{L}^2(\\mathcal{X})`.
+        noyau : str, optional
+            Classe du noyau appliqué sur la mesure. Seule la classe 
+            'gaussienne' est pour l'instant prise en charge, le noyau de 
+            Laplace ou la fonction d'Airy seront probablement implémentées 
+            dans une prochaine version. The default is 'gaussienne'.
+
+        Raises
+        ------
+        TypeError
+            Le noyau n'est pas encore implémenté.
+        NameError
+            Le noyau n'est pas reconnu par la fonction.
+
+        Returns
+        -------
+        acquis : ndarray
+            Matrice discrétisant :math:`\Phi(m)` .
+
+        """
         X_domain = dom.X
         Y_domain = dom.Y
         sigma = dom.sigma
@@ -153,15 +262,30 @@ class Mesure2D:
         acquis = X_domain*0
         if noyau == 'gaussienne':
             for i in range(0, N):
-                acquis += a[i]*gaussienne_2D(X_domain - x[i, 0], 
+                acquis += a[i]*gaussienne_2D(X_domain - x[i, 0],
                                              Y_domain - x[i, 1], sigma)
             return acquis
         if noyau == 'laplace':
-            raise TypeError("Pas implémenté")
-        raise NameError("Unknown kernel")
+            raise TypeError("Pas implémenté.")
+        raise NameError("Unknown kernel.")
 
     def covariance_kernel(self, dom):
-        '''Noyau de covariance associée à la mesure'''
+        """
+        Noyau de covariance associée à la mesure :math:`m` sur le domaine `dom`
+
+        Parameters
+        ----------
+        dom : Domain2D
+            Domaine :math:`\mathcal{X}` sur lequel va être calculé 
+            l'acquisition de :math:`m` dans 
+            :math:`\\mathrm{L}^2(\\mathcal{X}^2)`.
+
+        Returns
+        -------
+        acquis : ndarray
+            Matrice discrétisant :math:`\Lambda(m)` .
+
+        """
         X_domain = dom.X
         Y_domain = dom.Y
         sigma = dom.sigma
@@ -180,8 +304,31 @@ class Mesure2D:
         return acquis
 
     def acquisition(self, dom, echantillo, bru):
-        '''Simule une acquisition pour la mesure avec un bruit de fond et
-        un bruit poisson ou gaussien de niveau nv'''
+        """
+        Simule une acquisition pour la mesure.
+
+        Parameters
+        ----------
+        dom : Domain2D
+            Domaine sur lequel va être calculé l'acquisition de :math:`m` dans
+            :math:`\mathrm{L}^2(\mathcal{X})`.
+        echantillo : double
+            Format de la matrice carrée des bruits. Hierher àimplémenter sur
+            des domaines en rectangle.
+        bru : Bruits
+            L'objet contient toutes les valeurs définissant le bruit à simuler.
+
+        Raises
+        ------
+        NameError
+            Le type de bruit spécifié n'est pas reconnu par la fonction.
+
+        Returns
+        -------
+        acquis : ndarray
+            Vecteur discrétisant l'acquisition :math:`\Phi(m)`.
+
+        """
         fond = bru.fond
         nv = bru.niveau
         type_de_bruits = bru.type
@@ -199,7 +346,7 @@ class Mesure2D:
             w = np.random.poisson(nv, size=(echantillo, echantillo))
             simul = w*self.kernel(dom, noyau='gaussienne')
             acquis = simul + fond
-        raise TypeError
+        raise NameError("Unknown type of noise")
 
     def graphe(self, X_domain, Y_domain, lvl=50):
         '''Trace le contourf de la mesure'''
@@ -213,38 +360,16 @@ class Mesure2D:
         plt.grid()
         plt.show()
 
-    def torus(self, X_domain, current_fig=False, subplot=False):
-        '''Mesure placée sur le tore si dim(cadre) = 1'''
-        echantillo = len(X_domain)
-        if subplot:
-            ax = current_fig.add_subplot(224, projection='3d')
-        else:
-            current_fig = plt.figure()
-            ax = current_fig.add_subplot(111, projection='3d')
-        theta = np.linspace(0, 2*np.pi, echantillo)
-        y_torus = np.sin(theta)
-        x_torus = np.cos(theta)
-
-        a_x_torus = np.sin(2*np.pi*np.array(self.x))
-        a_y_torus = np.cos(2*np.pi*np.array(self.x))
-        a_z_torus = self.a
-
-        ax.plot(x_torus, y_torus, 0, '-k', label=r'$\mathbb{S}_1$')
-        ax.plot(a_x_torus, a_y_torus, a_z_torus,
-                'o', label=r'$m_{a,x}$', color='orange')
-
-        for i in range(self.N):
-            ax.plot((a_x_torus[i], a_x_torus[i]), (a_y_torus[i], a_y_torus[i]),
-                    (0, a_z_torus[i]), '--r', color='orange')
-
-        ax.set_xlabel('$X$')
-        ax.set_ylabel('$Y$')
-        ax.set_zlabel('$Amplitude$')
-        ax.set_title(r'Mesure sur $\mathbb{S}_1$', fontsize=20)
-        ax.legend()
-
     def tv(self):
-        '''Renvoie 0 si la mesure est vide : hierher à vérifier'''
+        """
+        Renvoie 0 si la mesure est vide : hierher à vérifier.
+
+        Returns
+        -------
+        double
+            :math:`|m|(\mathcal{X})`, norme TV de la mesure.
+
+        """
         try:
             return np.linalg.norm(self.a, 1)
         except ValueError:
@@ -252,8 +377,39 @@ class Mesure2D:
 
     def energie(self, dom, acquis, regul, obj='covar',
                 bruits='gauss'):
-        '''énergie de la mesure pour le problème Covenant ou BLASSO sur
-        l'acquisition moyenne '''
+        """
+        Énergie de la mesure pour le problème Covenant 
+        :math:`(\mathcal{Q}_\lambda (y))` ou BLASSO sur
+        l'acquisition moyenne :math:`(\mathcal{P}_\lambda (\overline{y}))`.
+
+        Parameters
+        ----------
+        dom : Domain2D
+            Domaine sur lequel va être calculée l'acquisition de :math:`m` dans
+            :math:`\mathrm{L}^2(\mathcal{X})`.
+        acquis : ndarray
+            Vecteur de l'observation, pour comparer à l'action de l'opérateur
+            adéquat sur la mesure :math:`m`.
+        regul : double, optional
+            Paramètre de régularisation `\lambda`.
+        obj : str, optional
+            Soit 'covar' pour reconstruire sur la covariance soit 'acquis' 
+            pour reconstruire sur la moyenne. The default is 'covar'.
+        bruits : str, optional
+            L'objet contient toutes les valeurs définissant le bruit à simuler.
+
+
+        Raises
+        ------
+        NameError
+            Le noyau n'est pas reconnu par la fonction.
+
+        Returns
+        -------
+        double
+            Évaluation de l'énergie :math:`T_\lambda` pour la mesure :math:`m`.
+
+        """
         if bruits == 'poisson':
             normalis = acquis.size
             if obj == 'covar':
@@ -278,11 +434,27 @@ class Mesure2D:
                 attache = 0.5*np.linalg.norm(acquis - simul)**2/normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
-            raise TypeError("Unknown kernel")
-        raise TypeError("Unknown noise")
+            raise NameError("Unknown kernel")
+        raise NameError("Unknown noise")
 
     def prune(self, tol=1e-3):
-        '''Retire les Dirac avec zéro d'amplitude'''
+        """
+        Retire les :math:`\delta`-pics avec une très faible amplitude (qui 
+        s'interpète comme des artefacts numériques).
+
+        Parameters
+        ----------
+        tol : double, optional
+            Tolérance en-dessous de laquelle les mesures de Dirac
+            ne sont pas conservées. The default is 1e-3.
+
+        Returns
+        -------
+        m : Mesure2D
+            Mesure discrète sans les :math:`\delta`-pics de faibles amplitudes.
+            
+
+        """
         # nnz = np.count_nonzero(self.a)
         nnz_a = np.array(self.a)
         nnz = nnz_a > tol
@@ -294,25 +466,92 @@ class Mesure2D:
 
 
 def mesure_aleatoire(N):
-    '''Créé une mesure aléatoire de N pics d'amplitudes aléatoires comprises
-    entre 0,5 et 1,5'''
+    """
+    Créé une mesure aléatoire de N :math:`\delta`-pics d'amplitudes aléatoires
+    comprises entre 0,5 et 1,5.
+
+    Parameters
+    ----------
+    N : int
+        Nombre de :math:`\delta`-pics à mettre dans la mesure discrète.
+
+    Returns
+    -------
+    m : :class:`Mesure2D`
+        Mesure discrète composée de N :math:`\delta`-pics distincts.
+
+    """
     x = np.round(np.random.rand(N, 2), 2)
     a = np.round(0.5 + np.random.rand(1, N), 2)[0]
     return Mesure2D(a, x)
 
 
 def phi(m, dom, obj='covar'):
-    '''Créé le résultat d'un opérateur d'acquisition à partir de la mesure m'''
+    """
+    Calcule le résultat d'un opérateur d'acquisition à partir de la mesure m
+
+    Parameters
+    ----------
+    m : Mesure2D
+        Mesure discrète sur :math:`\mathcal{X}`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel va être calculée l'acquisition 
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        la covariance.
+    obj : str, optional
+        Donne l'objectif de l'opérateur. The default is 'covar'.
+
+    Raises
+    ------
+    TypeError
+        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+
+    Returns
+    -------
+    ndarray
+        Renvoie :math:`\Phi(m)` si l'objectif est l'acquisition, et 
+        :math:`\Lambda(m)` si l'objectif est la covariance.
+
+    """
     if obj == 'covar':
         return m.covariance_kernel(dom)
     if obj == 'acquis':
         return m.kernel(dom)
-    raise TypeError('Unknown BLASSO target.')
+    raise NameError('Unknown BLASSO target.')
 
 
 def phi_vecteur(a, x, dom, obj='covar'):
-    '''créé le résultat d'un opérateur d'acquisition à partir des vecteurs
-    a et x qui forme une mesure m_tmp'''
+    """
+    Créer le résultat d'un opérateur d'acquisition à partir des vecteurs
+    a et x qui forme une mesure m_tmp
+
+    Parameters
+    ----------
+    a : array_like
+        Vecteur des luminosités, même nombre d'éléments que :math:`x`.
+    x : array_like
+        Vecteur des positions 2D, même nombre d'éléments que :math:`a`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        la covariance.
+    obj : str, optional
+        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Raises
+    ------
+    TypeError
+        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
     if obj == 'covar':
         m_tmp = Mesure2D(a, x)
         return m_tmp.covariance_kernel(dom)
@@ -351,8 +590,8 @@ def phiAdjointSimps(acquis, dom, obj='covar'):
             for j in range(taille_y):
                 x_decal = X_domain[i, j]
                 y_decal = Y_domain[i, j]
-                gauss =  gaussienne_2D(x_decal - X_domain, y_decal - Y_domain,
-                                       dom.sigma)
+                gauss = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain,
+                                      dom.sigma)
                 integ_x = integrate.simps(acquis * gauss, x=dom.X_grid)
                 eta[i, j] = integrate.simps(integ_x, x=dom.X_grid)
         return eta
@@ -360,7 +599,35 @@ def phiAdjointSimps(acquis, dom, obj='covar'):
 
 
 def phiAdjoint(acquis, dom, obj='covar'):
-    '''Hierher débugger ; taille_x et taille_y pas implémenté'''
+    """
+    Hierher débugger ; taille_x et taille_y pas implémenté
+
+    Parameters
+    ----------
+    acquis : ndarray 
+        Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        la covariance.
+    obj : str, optional
+        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Raises
+    ------
+    TypeError
+        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+
+    Returns
+    -------
+    eta : ndarray
+        Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
+        discrétisée. Utile pour calculer la discrétisation du certificat 
+        :math:`\eta` associé à une mesure.
+
+    """
     N_ech = dom.N_ech
     eta = np.zeros(np.shape(dom.X))
     if obj == 'covar':
@@ -381,7 +648,45 @@ def phiAdjoint(acquis, dom, obj='covar'):
 
 
 def etak(mesure, acquis, dom, regul, obj='covar'):
-    r'''Certificat $\eta$ assicé à la mesure'''
+    r"""Certificat dual :math:`\eta` associé à la mesure :math:`m`. Ce 
+    certificat permet de donner une approximation (sur la grille) de la 
+    position du Dirac de plus forte intensité qui engendrerait acquis par
+    le noyau `obj`.
+
+    Parameters
+    ----------
+    mesure : Mesure2D
+        Mesure discrète :math:`m` dont on veut obtenir le certificat duaL.
+    acquis : ndarray 
+        Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        la covariance.
+    regul : double
+        Paramètre de régularisation `\lambda`.
+    obj : str, optional
+        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Returns
+    -------
+    eta : ndarray
+        Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
+        discrétisée. Certificat dual :math:`\eta` associé à la mesure.
+
+    Notes
+    -------
+    Si l'objectif est la covariance :
+
+    .. math:: \eta_\mathcal{Q} = \Lambda^\ast(\Lambda m - R_y)
+
+    Si l'objectif est la moyenne :
+
+    .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
+
+    """
     eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
@@ -408,10 +713,64 @@ def covariance_pile(stack, stack_mean):
 
 
 # Le fameux algo de Sliding Frank Wolfe
-def SFW(acquis, dom, bruits, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
-    '''y acquisition et nIter nombre d'itérations
-    mesParIter est un booléen qui contrôle le renvoi du vecteur mesParIter
-    un vecteur qui contient les mesure_k, mesure à la k-ième itération'''
+def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
+        obj='covar'):
+    """
+    Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
+    solution du BLASSO [1,2].
+
+    Si l'objectif est la covariance :
+
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) = \\
+        \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2. \\
+            \quad (\mathcal{Q}_\lambda (y))
+
+    Si l'objectif est la moyenne :
+
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) = \\
+        \lambda |m|(\mathcal{X}) + \\
+            \dfrac{1}{2} ||\overline{y} - \Phi (m)||^2.\\
+                \quad (\mathcal{P}_\lambda (\overline{y}))
+
+
+    Paramètres
+    ----------
+    acquis : ndarray 
+            Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    regul : double, optional
+        Paramètre de régularisation :math:`\lambda`. The default is 1e-5.
+    nIter : int, optional
+        Nombre d'itérations maximum pour l'algorithme. The default is 5.
+    mesParIter : boolean, optional
+        Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les 
+        :math:`k` mesures calculées par SFW. The default is False.
+    obj : str, optional
+        Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Sorties
+    -------
+    mesure_k : Mesure2D
+            Dernière mesure reconstruite par SFW.
+    nrj_vecteur : ndarray
+                Vecteur qui donne l'énergie :math:`T_\lambda(m^k)` 
+                au fil des itérations.
+    mes_vecteur : ndarray
+                Vecteur des mesures reconstruites au fil des itérations.
+
+    Raises
+    ------
+    TypeError
+        Si l'objectif `obj` n'est pas connu, lève une exception.
+
+    Références
+    ----------
+    [1] Denoyelle
+    [2] De Castro
+    """
     N_ech_y = dom.N_ech  # hierher à adapter
     N_grille = dom.N_ech**2
     if obj == 'covar':
@@ -526,13 +885,15 @@ def SFW(acquis, dom, bruits, regul=1e-5, nIter=5, mesParIter=False, obj='covar')
                                                        dom.X - x_p[i, 0],
                                                        dom.sigma)
                     cov_der_x = np.outer(gauss_der_x, gauss)
-                    partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual) / (N_grille)
+                    partial_x[2*i] = 2*a_p[i] * \
+                        np.sum(cov_der_x*residual) / (N_grille)
                     gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.Y - x_p[i, 1],
                                                        dom.sigma)
                     cov_der_y = np.outer(gauss_der_y, gauss)
-                    partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual) / (N_grille)
+                    partial_x[2*i+1] = 2*a_p[i] * \
+                        np.sum(cov_der_y*residual) / (N_grille)
 
                 return(partial_a + partial_x)
             elif obj == 'acquis':
@@ -577,7 +938,7 @@ def SFW(acquis, dom, bruits, regul=1e-5, nIter=5, mesParIter=False, obj='covar')
 
         # Mise à jour des paramètres avec retrait des Dirac nuls
         mesure_k = Mesure2D(a_k_plus, x_k_plus)
-        mesure_k = mesure_k.prune(tol=1e-3)
+        mesure_k = mesure_k.prune()
         a_k = mesure_k.a
         x_k = mesure_k.x
         Nk = mesure_k.N
@@ -636,7 +997,7 @@ def partial_wasserstein_metric(mes, m_zer):
     return log['partial_w_dist']
 
 
-def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None, 
+def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
                  saveFig=False, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
     if m.a.size > 0:
@@ -648,7 +1009,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
         #              fr'pour $\lambda = {lambda_regul:.0e}$ ' +
         #              fr'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
         diss = wasserstein_metric(m, m_zer)
-        fig.suptitle(f'Reconstruction {obj} : ' + 
+        fig.suptitle(f'Reconstruction {obj} : ' +
                      r'$\mathcal{{W}}_1(m, m_{a_0,x_0})$' +
                      f' = {diss:.3f}', fontsize=22)
 
@@ -767,7 +1128,7 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
     cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    divider = make_axes_locatable(ax1) # pour paramétrer colorbar
+    divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
     ax1.set_xlabel('X', fontsize=25)
@@ -781,10 +1142,10 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
     ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-               s=dom.N_ech, label='Hidden spikes')
-    ax2.scatter(m_list[0].x[:,0], m_list[0].x[:,1], marker='+',
-                      s=2*dom.N_ech, c='g', label='Recovered spikes')
+    ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                s=dom.N_ech, label='Hidden spikes')
+    ax2.scatter(m_list[0].x[:, 0], m_list[0].x[:, 1], marker='+',
+                s=2*dom.N_ech, c='g', label='Recovered spikes')
     ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
 
@@ -795,11 +1156,11 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
         ax2.clear()
         ax2.set_aspect('equal', adjustable='box')
         ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
-                             cmap='seismic')
-        ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-               s=4*dom.N_ech, label='GT spikes')
-        ax2.scatter(m_list[k].x[:,0], m_list[k].x[:,1], marker='+',
-                      s=8*dom.N_ech, c='g', label='Recovered spikes')
+                     cmap='seismic')
+        ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                    s=4*dom.N_ech, label='GT spikes')
+        ax2.scatter(m_list[k].x[:, 0], m_list[k].x[:, 1], marker='+',
+                    s=8*dom.N_ech, c='g', label='Recovered spikes')
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
         ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
@@ -825,100 +1186,4 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     else:
         raise ValueError('Unknown video format')
     return fig
-
-
-# if __name__ == 'main':
-#     N_ECH = 2**4 # Taux d'échantillonnage
-#     X_GAUCHE = 0
-#     X_DROIT = 1 
-#     GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
-#     X, Y = np.meshgrid(GRID, GRID)
-#     SIGMA = 1e-1
-    
-    
-#     domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y, SIGMA)
-#     bruits_t = Bruits(5.0, 3e-1, 'gauss')
-    
-#     m_ax0 = mesure_aleatoire(9)
-    
-#     T_ech = 50     # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
-    
-#     pile = pile_aquisition(m_ax0, domain, bruits_t)
-#     pile_moy = np.mean(pile, axis=0)
-#     y = pile_moy
-#     R_y = covariance_pile(pile, pile_moy)
-#     R_x = m_ax0.covariance_kernel(domain)
-    
-#     # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-#     lambda_regul = 1e-5 # Param de relaxation pour SFW R_y
-#     lambda_regul2 = 3e-3 # Param de relaxation pour SFW y_moy
-    
-#     # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
-#     # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
-#     # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
-    
-#     # # Pour Q_0(y_0) P_0(y_0)
-#     # lambda_regul = 1e-8 # Param de relaxation pour SFW R_y
-#     # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
-    
-#     iteration = m_ax0.N 
-    
-    
-#     (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, bruits_t, regul=lambda_regul,
-#                                     nIter=iteration, mesParIter=True, 
-#                                     obj='covar')
-#     (m_moy, nrj_moy, mes_moy) = SFW(y, domain, bruits_t, regul=lambda_regul2,
-#                                     nIter=iteration, mesParIter=True, 
-#                                     obj='acquis')
-    
-#     print(f'm_Mx : {m_cov.N} Diracs')
-#     print(f'm_ax : {m_moy.N} Diracs')
-#     print(f'm_ax0 : {m_ax0.N} Diracs')
-    
-#     certificat_V = etak(m_cov, R_y, domain, lambda_regul, obj='covar')
-#     certificat_V_moy = etak(m_moy, y, domain, lambda_regul2,
-#                             obj='acquis')
-    
-#     if __saveFig__:
-#         plt.figure(figsize=(12,4))
-#         plt.subplot(121)
-#         plt.imshow(m_cov.covariance_kernel(domain))
-#         plt.colorbar()
-#         plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
-#         plt.subplot(122)
-#         plt.imshow(R_y)
-#         plt.colorbar()
-#         plt.title(r'$R_y$', fontsize=40)
-    
-    
-#     # Métrique de déconvolution : distance de Wasserstein
-#     try:
-#         dist_x_cov = wasserstein_metric(m_cov, m_ax0)
-#     except ValueError:
-#         print('[!] Attention Cov Dirac nul')
-#         dist_x_cov = np.inf
-#     try:
-#         dist_x_moy = wasserstein_metric(m_moy, m_ax0)
-#     except ValueError:
-#         print('[!] Attention Moy Dirac nul')
-#         dist_x_moy = np.inf
-    
-#     print(fr'Dist W_1 des x de Q_\lambda : {dist_x_cov:.3f}')
-#     print(fr'Dist W_1 des x de P_\lambda : {dist_x_moy:.3f}')
-    
-    
-    
-#     y_simul = m_cov.kernel(domain)
-    
-#     if m_cov.a.size > 0:
-#         plot_results(m_cov, m_ax0, domain, bruits_t, nrj_cov, certificat_V)
-#     if m_moy.a.size > 0:
-#         plot_results(m_moy, m_ax0, domain, bruits_t, nrj_moy, certificat_V_moy,
-#                       title='covar-moy-certificat-2d', obj='acquis')
-    
-#     if __saveVid__:
-#         gif_pile(pile, m_ax0, domain)
-#         if m_cov.a.size > 0:
-#             gif_results(y, m_ax0, mes_cov, domain)
-
 

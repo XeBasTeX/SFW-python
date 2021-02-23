@@ -315,10 +315,10 @@ def phiAdjointSimps(cov_acquis, domain, obj='covar'):
 
 
 def phiAdjoint(cov_acquis, domain, obj='covar'):
-    taille_y = cov_acquis.size
+    taille_y = len(cov_acquis)
     if obj == 'covar':
         out = np.outer(gaussienne(X_big), gaussienne(X_big))
-        eta = scipy.signal.convolve(out, cov_acquis, 'valid')/taille_y
+        eta = scipy.signal.convolve(out, cov_acquis, 'valid')/taille_y**2
         return np.diag(eta)
     if obj == 'acquis':
         return np.convolve(gaussienne(X_big), cov_acquis,'valid')/taille_y
@@ -476,14 +476,14 @@ if __saveFig__ == True:
                 bbox_inches='tight', pad_inches=0.03)
 
 
-lambda_regul = 5e-7 # Param de relaxation pour SFW R_y
-lambda_regul2 = 7e-3 # Param de relaxation pour SFW y_moy
-iteration = 3
+lambda_regul = 4e-6 # Param de relaxation pour SFW R_y
+lambda_regul2 = 10e-3 # Param de relaxation pour SFW y_moy
 
 
-(m_cov, nrj_cov) = SFW(R_y, regul=lambda_regul, nIter=iteration, 
+
+(m_cov, nrj_cov) = SFW(R_y, regul=lambda_regul, nIter=5, 
                        bruits=type_bruits)
-(m_moy, nrj_moy) = SFW(y, regul=lambda_regul2, nIter=iteration, obj='acquis', 
+(m_moy, nrj_moy) = SFW(y, regul=lambda_regul2, nIter=5, obj='acquis', 
                        bruits=type_bruits)
 
 certificat_V = etak(m_cov, R_y, lambda_regul)

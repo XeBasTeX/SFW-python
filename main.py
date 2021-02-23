@@ -26,15 +26,15 @@ import scipy
 
 
 np.random.seed(90)
-N_ech = 2**6 # Taux d'échantillonnage
-xgauche = 0
+N_ech = 2**7 # Taux d'échantillonnage
+xgauche = -0.7
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
 X_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech)
 X_certif = np.linspace(xgauche, xdroit, N_ech+1)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 8e-4 # Param de relaxation
+lambda_regul = 5e-4 # Param de relaxation
 niveaubruits = 5e-2 # sigma du bruit
 
 
@@ -332,7 +332,7 @@ def SFW(y, regul=1e-5, nIter=5):
 
 
 if __name__ == '__main__':
-    (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5)
+    (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=3)
     print('On a retrouvé m_ax ' + str(m_sfw))
     certificat_V = etak(m_sfw, y, lambda_regul)
     print('On voulait retrouver m_ax0 ' + str(m_ax0))
