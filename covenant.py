@@ -437,6 +437,7 @@ class Mesure2D:
             raise NameError("Unknown kernel")
         raise NameError("Unknown noise")
 
+
     def prune(self, tol=1e-3):
         """
         Retire les :math:`\delta`-pics avec une très faible amplitude (qui 
@@ -465,7 +466,7 @@ class Mesure2D:
         return m
 
 
-def mesure_aleatoire(N):
+def mesure_aleatoire(N, dom):
     """
     Créé une mesure aléatoire de N :math:`\delta`-pics d'amplitudes aléatoires
     comprises entre 0,5 et 1,5.
@@ -474,6 +475,8 @@ def mesure_aleatoire(N):
     ----------
     N : int
         Nombre de :math:`\delta`-pics à mettre dans la mesure discrète.
+    dom : Domaine2D
+        Domaine où les :math:`\delta`-pics vont être disposés.
 
     Returns
     -------
@@ -481,7 +484,8 @@ def mesure_aleatoire(N):
         Mesure discrète composée de N :math:`\delta`-pics distincts.
 
     """
-    x = np.round(np.random.rand(N, 2), 2)
+    x = np.round(dom.x_gauche + np.random.rand(N, 2)*
+                 (dom.x_droit - dom.x_gauche), 2)
     a = np.round(0.5 + np.random.rand(1, N), 2)[0]
     return Mesure2D(a, x)
 
@@ -687,7 +691,7 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
 
     """
-    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
+    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
 
@@ -714,7 +718,7 @@ def covariance_pile(stack, stack_mean):
 
 # Le fameux algo de Sliding Frank Wolfe
 def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
-        obj='covar'):
+        obj='covar', printInline=True):
     """
     Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
     solution du BLASSO [1,2].
@@ -775,8 +779,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
     N_grille = dom.N_ech**2
     if obj == 'covar':
         N_grille = N_grille**2
-    X_domain = dom.X
-    Y_domain = dom.Y
+    # X_domain = dom.X
+    # Y_domain = dom.Y
     a_k = np.empty((0, 0))
     x_k = np.empty((0, 0))
     mesure_k = Mesure2D()
@@ -786,21 +790,21 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
         mes_vecteur = np.array([])
     nrj_vecteur = np.zeros(nIter)
     for k in range(nIter):
-        print('\n' + 'Étape numéro ' + str(k))
+        if printInline: print('\n' + 'Étape numéro ' + str(k))
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
         certif_abs = np.abs(eta_V_k)
         x_star_index = np.unravel_index(np.argmax(certif_abs, axis=None),
                                         eta_V_k.shape)
         # passer de l'idx à xstar
         x_star = np.array(x_star_index)[::-1]/N_ech_y
-        print(fr'* x^* index {x_star} max ' +
-              fr'à {np.round(certif_abs[x_star_index], 2)}')
+        if printInline: print(fr'* x^* index {x_star} max ' +
+                              fr'à {np.round(certif_abs[x_star_index], 2)}')
 
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
-            nrj_vecteur[k] = mesure_k.energie(X_domain, Y_domain, acquis,
-                                              regul, obj)
-            print("\n\n---- Condition d'arrêt ----")
+            nrj_vecteur[k] = mesure_k.energie(dom, acquis,
+                                              regul, obj=obj)
+            if printInline: print("\n\n---- Condition d'arrêt ----")
             if mesParIter:
                 return(mesure_k, nrj_vecteur[:k], mes_vecteur)
             return(mesure_k, nrj_vecteur[:k])
@@ -852,7 +856,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
 
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
         # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
-        print('* Optim convexe')
+        if printInline: print('* Optim convexe')
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
@@ -942,16 +946,16 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
         a_k = mesure_k.a
         x_k = mesure_k.x
         Nk = mesure_k.N
-        print(f'* Optim non-convexe : {Nk} Diracs')
+        if printInline: print(f'* Optim non-convexe : {Nk} Diracs')
 
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
-        print(f'* Énergie : {nrj_vecteur[k]:.3f}')
+        if printInline: print(f'* Énergie : {nrj_vecteur[k]:.3f}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
 
     # Fin des itérations
-    print("\n\n---- Fin de la boucle ----")
+    if printInline: print("\n\n---- Fin de la boucle ----")
     if mesParIter:
         return(mesure_k, nrj_vecteur, mes_vecteur)
     return(mesure_k, nrj_vecteur)
@@ -1014,7 +1018,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
                      f' = {diss:.3f}', fontsize=22)
 
         plt.subplot(221)
-        cont1 = plt.contourf(dom.X, dom.Y, y, 100, cmap='seismic')
+        cont1 = plt.contourf(dom.X, dom.Y, y, 100, cmap='gray')
         for c in cont1.collections:
             c.set_edgecolor("face")
         plt.colorbar()
@@ -1029,7 +1033,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
         plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
 
         plt.subplot(222)
-        cont2 = plt.contourf(dom.X, dom.Y, m.kernel(dom), 100, cmap='seismic')
+        cont2 = plt.contourf(dom.X, dom.Y, m.kernel(dom), 100, cmap='gray')
         for c in cont2.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -1043,7 +1047,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
         plt.colorbar()
 
         plt.subplot(223)
-        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='seismic')
+        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='gray')
         for c in cont3.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
