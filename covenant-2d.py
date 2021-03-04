@@ -891,9 +891,9 @@ domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 # X_grid_certif = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, N_ECH+1)
 # X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
 
-# m_ax0 = Mesure2D([8,10,6,7,9],
-#                   [[0.2,0.23],[0.80,0.35],[0.33,0.82],[0.30,0.30],[0.23,0.38]])
-m_ax0 = mesure_aleatoire(9)
+m_ax0 = Mesure2D([8,10,6,7,9],
+                  [[0.2,0.23],[0.90,0.95],[0.33,0.82],[0.30,0.30],[0.23,0.38]])
+# m_ax0 = mesure_aleatoire(9)
 
 T_ech = 500       # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
 
@@ -1200,7 +1200,7 @@ if __saveVid__:
 
 #%% Amélioration calcul certificat
 
-N_ECH = 2**5 # Taux d'échantillonnage
+N_ECH = 2**4 # Taux d'échantillonnage
 X_GAUCHE = 0
 X_DROIT = 1 
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
@@ -1218,33 +1218,87 @@ X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
 # plt.figure(figsize=(20,10))
 # plt.imshow(adj)
 
-X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
-X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
-
 h_vec = gaussienne_2D(X_big, Y_big)
-pad_shape = tuple(np.array(R_y.shape) + 2*np.array(h_vec.shape) - 2)
+pad_shape = tuple(np.array(R_y.shape) + np.array(h_vec.shape))
 R_pad = np.zeros(pad_shape)
-padder = 2*N_ECH - 1
+padder = N_ECH
 R_pad[padder:-padder, padder:-padder] = R_y
 
+
+# Similaire à padder R_y par des 0 et faire la convol avec h_vec
 adj1 = np.diag(scipy.signal.convolve2d(R_y, h_vec, 'same'))/N_ECH**4
-adj1 = np.roll(adj1, -1)
+# adj1 = np.roll(adj1, -1)
 adj1 = adj1.reshape(N_ECH, N_ECH)
-adj2 = np.diag(scipy.signal.convolve2d(scipy.signal.convolve2d(R_pad, h_vec, 'valid'),  h_vec, 'valid'))/N_ECH**4
-adj2 = adj2.reshape(N_ECH, N_ECH)
+
+# adj2 = np.diag(scipy.signal.convolve2d(scipy.signal.convolve2d(R_pad, h_vec,
+#                'valid'),  h_vec, 'valid'))/N_ECH**4
+# adj2 = adj2.reshape(N_ECH, N_ECH)
+
 adj3 = phiAdjointSimps(R_y, domain)
 
-plt.figure(figsize=(15,10))
+# X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH + 1)
+# X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
+# h_vec = gaussienne_2D(X_big, Y_big)
+
+# adj3 = np.diag(scipy.signal.convolve2d(R_pad, h_vec, 'valid'))/N_ECH**4
+# adj3 = adj3.reshape(N_ECH, N_ECH)
+
+
+plt.figure(figsize=(8,6), dpi=600)
 plt.subplot(221)
 plt.imshow(adj3)
-plt.title('Simps', fontsize=40)
+plt.title('Simps', fontsize=20)
 plt.colorbar()
 plt.subplot(222)
-plt.imshow(adj2)
-plt.colorbar()
-plt.title('Convol1', fontsize=40)
-plt.subplot(223)
 plt.imshow(adj1)
 plt.colorbar()
-plt.title('Convol 2', fontsize=40)
+plt.title('Convol mieux ?', fontsize=20)
+# plt.subplot(223)
+# plt.imshow(adj2)
+# plt.colorbar()
+# plt.title('Convol vieux', fontsize=20)
+
+#%% Amélioration calcul certificat
+
+N_ECH = 2**4 # Taux d'échantillonnage
+X_GAUCHE = 0
+X_DROIT = 1 
+GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
+X, Y = np.meshgrid(GRID, GRID)
+GRID_BIG = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
+X_big, Y_big = np.meshgrid(GRID_BIG, GRID_BIG)
+
+R_y = m_ax0.covariance_kernel(X, Y)
+out = np.outer(gaussienne_2D(X_big, Y_big), gaussienne_2D(X_big, Y_big))
+
+
+sortie = scipy.signal.convolve2d(R_y, out, 'valid')
+sortie = np.diag(sortie)
+sortie = sortie.reshape(N_ECH, N_ECH)
+
+plt.figure()
+plt.imshow(sortie)
+
+
+# #%%
+# N_ECH = 2**4 # Taux d'échantillonnage
+# X_GAUCHE = 0
+# X_DROIT = 1 
+# GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
+# X, Y = np.meshgrid(GRID, GRID)
+# domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
+
+# R_y = m_ax0.covariance_kernel(X, Y)
+# y = m_ax0.kernel(X,Y)
+
+# plt.figure(figsize=(8,6), dpi=600)
+# plt.subplot(221)
+# plt.imshow(phiAdjointSimps(R_y, domain))
+# plt.title('Simps', fontsize=20)
+# plt.colorbar()
+# plt.subplot(222)
+# plt.imshow(phiAdjointSimps(y, domain, obj='acquis'))
+# plt.colorbar()
+# plt.title('Convol mieux ?', fontsize=20)
+
 

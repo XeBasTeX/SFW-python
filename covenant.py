@@ -7,7 +7,6 @@ and reconstructing those measures w.r.t to a provided acquistion
 @author: Bastien Laville (https://github.com/XeBasTeX)
 """
 
-__author__ = 'Bastien'
 __team__ = 'Morpheme'
 __deboggage__ = False
 
@@ -16,6 +15,7 @@ import numpy as np
 from scipy import integrate
 import scipy
 import scipy.signal
+from scipy.spatial.distance import cdist
 import ot
 
 from matplotlib.animation import FuncAnimation
@@ -127,10 +127,8 @@ class Domain2D:
         self.Y = Y_domain
         self.sigma = sigma_psf
 
-
     def get_domain(self):
         return(self.X, self.Y)
-
 
     def compute_square_mesh(self):
         """
@@ -143,7 +141,6 @@ class Domain2D:
 
         """
         return np.meshrgrid(self.X_grid)
-
 
     def big(self):
         """
@@ -170,10 +167,8 @@ class Bruits:
         self.niveau = niveau
         self.type = type_de_bruits
 
-
     def get_fond(self):
         return self.fond
-
 
     def get_nv(self):
         return self.niveau
@@ -195,14 +190,12 @@ class Mesure2D:
             self.a = np.array(amplitude)
         self.N = len(amplitude)
 
-
     def __add__(self, m):
         '''Hieher : il faut encore régler l'addition pour les mesures au même
         position, ça vaudrait le coup de virer les duplicats'''
         a_new = np.append(self.a, m.a)
         x_new = np.array(list(self.x) + list(m.x))
         return Mesure2D(a_new, x_new)
-
 
     def __eq__(self, m):
         if m == 0 and (self.a == [] and self.x == []):
@@ -211,10 +204,8 @@ class Mesure2D:
             return self.__dict__ == m.__dict__
         return False
 
-
     def __ne__(self, m):
         return not self.__eq__(m)
-
 
     def __str__(self):
         '''Donne les infos importantes sur la mesure'''
@@ -222,7 +213,6 @@ class Mesure2D:
         positions = np.round(self.x, 3)
         return(f"{self.N} Diracs \nAmplitudes : {amplitudes}" +
                f"\nPositions : {positions}")
-
 
     def kernel(self, dom, noyau='gaussienne'):
         """
@@ -437,7 +427,6 @@ class Mesure2D:
             raise NameError("Unknown kernel")
         raise NameError("Unknown noise")
 
-
     def prune(self, tol=1e-3):
         """
         Retire les :math:`\delta`-pics avec une très faible amplitude (qui 
@@ -466,6 +455,50 @@ class Mesure2D:
         return m
 
 
+def merge_spikes(mes, tol=1e-3):
+    """
+    Retire les :math:`\delta`-pic doublons, sans considération sur l'amplitude.
+
+    Parameters
+    ----------
+    mes : Mesure2D
+        Mesure dont on veut retirer les :math:`\delta`-pics doublons.
+    tol : double, optional
+        Tolérance pour la distance entre les points. The default is 1e-3.
+
+    Returns
+    -------
+    new_mes : Mesure2D
+        Mesure sans les :math:`\delta`-pics doublons.
+
+    """
+    mat_dist = cdist(mes.x, mes.x)
+    idx_spurious = np.array([])
+    list_x = np.array([])
+    list_a = np.array([])
+    for j in range(mes.N):
+        for i in range(j):
+            if mat_dist[i, j] < tol:
+                coord = [int(i), int(j)]
+                idx_spurious = np.append(idx_spurious, np.array(coord))
+    idx_spurious = idx_spurious.reshape((int(len(idx_spurious)/2), 2))
+    idx_spurious = idx_spurious.astype(int)
+    if idx_spurious.size == 0:
+        return mes
+    else:
+        cancelled = []
+        for i in range(mes.N):
+            if i in cancelled or i in idx_spurious[:, 0]:
+                cancelled = np.append(cancelled, i)
+            else:
+                if list_x.size == 0:
+                    list_x = np.vstack([mes.x[i]])
+                else:
+                    list_x = np.vstack([list_x, mes.x[i]])
+                list_a = np.append(list_a, mes.a[i])
+        return Mesure2D(list_a, list_x)
+
+
 def mesure_aleatoire(N, dom):
     """
     Créé une mesure aléatoire de N :math:`\delta`-pics d'amplitudes aléatoires
@@ -484,7 +517,7 @@ def mesure_aleatoire(N, dom):
         Mesure discrète composée de N :math:`\delta`-pics distincts.
 
     """
-    x = np.round(dom.x_gauche + np.random.rand(N, 2)*
+    x = np.round(dom.x_gauche + np.random.rand(N, 2) *
                  (dom.x_droit - dom.x_gauche), 2)
     a = np.round(0.5 + np.random.rand(1, N), 2)[0]
     return Mesure2D(a, x)
@@ -696,8 +729,29 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
 
 
 def pile_aquisition(m, dom, bru, T_ech):
-    r'''Construit une pile d'acquisition à partir d'une mesure.
-    Correspond à l'opérateur $\vartheta(\mu)$ '''
+    r"""
+    Construit une pile d'acquisition à partir d'une mesure. Correspond à 
+    l'opérateur $\vartheta(\mu)$ 
+
+    Parameters
+    ----------
+    m : Mesure2D
+        Mesure discrète sur :math:`\mathcal{X}`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    bru : Bruits
+        Contient les paramètres caractérisant le bruit qui pollue les données.
+    T_ech : double
+        Nombre d'images à générer.
+
+    Returns
+    -------
+    acquis_temporelle : ndarray
+        Vecteur 3D, la première dimension est celle du temps et les deux autres
+        sont celles de l'espace :math:`\mathcal{X}`.
+
+    """
     N_mol = len(m.a)
     taille = dom.N_ech
     acquis_temporelle = np.zeros((T_ech, taille, taille))
@@ -709,19 +763,47 @@ def pile_aquisition(m, dom, bru, T_ech):
 
 
 def covariance_pile(stack, stack_mean):
-    '''Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne'''
+    """
+    Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne
+
+    Parameters
+    ----------
+    stack : ndarray
+        Matrice 3D, la première dimension est celle du temps et les deux autres
+        sont celles de l'espace :math:`\mathcal{X}`. Aussi noté :math:`y(x,t)`.
+    stack_mean : ndarray
+        Matrice 2D, moyenne temporelle de la pile d'acquisition :math:`y(x,t)`.
+        Aussi noté :math:`\overline{y}(x)`.
+
+    Returns
+    -------
+    R_y : ndarray
+        Matrice de covariance de la pile d'acquisition.
+
+    Notes
+    -------
+    La moyenne est donnée par :math:`x \in \mathcal{X}` :
+
+    .. math:: \overline{y}(x) = \int_0^T y(x,t) \,\mathrm{d}t.
+    
+    La covariance est donnée par :math:`u,v \in \mathcal{X}` :
+
+    .. math:: R_y(u,v) = \int_0^T (y(u,t) - \overline{y}(u))(y(v,t) - 
+                                            \overline{y}(v))\,\mathrm{d}t. 
+
+    """
     covar = np.zeros((len(stack[0])**2, len(stack[0])**2))
     for i in range(len(stack)):
         covar += np.outer(stack[i, :] - stack_mean, stack[i, :] - stack_mean)
-    return covar/len(stack-1)   # T-1 ou T hierher ?
+    return covar/len(stack-1)
 
 
 # Le fameux algo de Sliding Frank Wolfe
-def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
+def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         obj='covar', printInline=True):
     """
     Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
-    solution du BLASSO [1,2].
+    solution du BLASSO [1].
 
     Si l'objectif est la covariance :
 
@@ -748,6 +830,9 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
         Paramètre de régularisation :math:`\lambda`. The default is 1e-5.
     nIter : int, optional
         Nombre d'itérations maximum pour l'algorithme. The default is 5.
+    mes_init : Mesure2D, optional
+        Mesure pour initialiser l'algorithme. Si None est passé en argument, 
+        l'algorithme initialisera avec la mesure nulle. The default is None.
     mesParIter : boolean, optional
         Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les 
         :math:`k` mesures calculées par SFW. The default is False.
@@ -772,39 +857,48 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
 
     Références
     ----------
-    [1] Denoyelle
-    [2] De Castro
+    [1] Quentin Denoyelle, Vincent Duval, Gabriel Peyré, Emmanuel Soubies. 
+    The Sliding Frank-Wolfe Algorithm and its Application to Super-Resolution 
+    Microscopy. Inverse Problems, IOP Publishing, In press
+    https://hal.archives-ouvertes.fr/hal-01921604
     """
     N_ech_y = dom.N_ech  # hierher à adapter
     N_grille = dom.N_ech**2
     if obj == 'covar':
         N_grille = N_grille**2
-    # X_domain = dom.X
-    # Y_domain = dom.Y
-    a_k = np.empty((0, 0))
-    x_k = np.empty((0, 0))
-    mesure_k = Mesure2D()
-    x_k_demi = np.empty((0, 0))
-    Nk = 0                      # Taille de la mesure discrète
+    if mes_init == None:
+        mesure_k = Mesure2D()
+        a_k = np.empty((0, 0))
+        x_k = np.empty((0, 0))
+        x_k_demi = np.empty((0, 0))
+        Nk = 0
+    else:
+        mesure_k = mes_init
+        a_k = mes_init.a
+        x_k = mes_init.x
+        Nk = mesure_k.N
     if mesParIter:
         mes_vecteur = np.array([])
     nrj_vecteur = np.zeros(nIter)
     for k in range(nIter):
-        if printInline: print('\n' + 'Étape numéro ' + str(k))
+        if printInline:
+            print('\n' + 'Étape numéro ' + str(k))
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
         certif_abs = np.abs(eta_V_k)
         x_star_index = np.unravel_index(np.argmax(certif_abs, axis=None),
                                         eta_V_k.shape)
         # passer de l'idx à xstar
         x_star = np.array(x_star_index)[::-1]/N_ech_y
-        if printInline: print(fr'* x^* index {x_star} max ' +
-                              fr'à {np.round(certif_abs[x_star_index], 2)}')
+        if printInline:
+            print(fr'* x^* index {x_star} max ' +
+                  fr'à {np.round(certif_abs[x_star_index], 2)}')
 
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
             nrj_vecteur[k] = mesure_k.energie(dom, acquis,
                                               regul, obj=obj)
-            if printInline: print("\n\n---- Condition d'arrêt ----")
+            if printInline:
+                print("\n\n---- Condition d'arrêt ----")
             if mesParIter:
                 return(mesure_k, nrj_vecteur[:k], mes_vecteur)
             return(mesure_k, nrj_vecteur[:k])
@@ -856,7 +950,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
 
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
         # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
-        if printInline: print('* Optim convexe')
+        if printInline:
+            print('* Optim convexe')
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
@@ -943,19 +1038,23 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False,
         # Mise à jour des paramètres avec retrait des Dirac nuls
         mesure_k = Mesure2D(a_k_plus, x_k_plus)
         mesure_k = mesure_k.prune()
+        mesure_k = merge_spikes(mesure_k)
         a_k = mesure_k.a
         x_k = mesure_k.x
         Nk = mesure_k.N
-        if printInline: print(f'* Optim non-convexe : {Nk} Diracs')
+        if printInline:
+            print(f'* Optim non-convexe : {Nk} Diracs')
 
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
-        if printInline: print(f'* Énergie : {nrj_vecteur[k]:.3f}')
+        if printInline:
+            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
 
     # Fin des itérations
-    if printInline: print("\n\n---- Fin de la boucle ----")
+    if printInline:
+        print("\n\n---- Fin de la boucle ----")
     if mesParIter:
         return(mesure_k, nrj_vecteur, mes_vecteur)
     return(mesure_k, nrj_vecteur)
@@ -1001,6 +1100,73 @@ def partial_wasserstein_metric(mes, m_zer):
     return log['partial_w_dist']
 
 
+def homotopy(acquis, dom, sigma_target, c=1, nIter=10, obj='covar'):
+    """
+    Algorithme d'homotopie [1,2] pour reconstuire la mesure à l'origine de 
+    `acquis`, avec seulement un écart-type cible `sigma_target` comme données. 
+    C'est typiquement le bruit-gaussien qui entâche l'image.
+
+    Parameters
+    ----------
+    acquis : ndarray
+        Acquisition du problème inverse :math:`y`, :math:`R_y`, `etc`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , `etc`.
+    sigma_target : double
+        Écart-type cible, typiquement celle du bruit gaussien polluant
+        l'acquisition.
+    c : double, optional
+        Paramètre accélérant la convergence de l'algorithme d'homotopie.
+        The default is 1.
+    nIter : int, optional
+        Nombre d'itérations maximum pour l'algorithme. The default is 10.
+    obj : str, optional
+        Soit '`covar`' pour reconstruire sur la covariance soit '`acquis`' pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Sorties
+    -------
+    mesure_k : Mesure2D
+            Dernière mesure reconstruite :math:`m^{[k]}` par l'homotopie.
+    nrj_k : ndarray
+        Vecteur qui donne l'énergie :math:`T_{\lambda_k}(m^{[k]})` 
+        du dernier appel à SFW.
+    lambda_k : ndarray
+        Paramètre de régularisation optimal :math:`\lambda`.
+
+    Références
+    ----------
+    [1] Jean-Baptiste Courbot, Bruno Colicchio. A Fast Homotopy Algorithm for 
+    Gridless Sparse Recovery. 2020.
+    https://hal.archives-ouvertes.fr/hal-02940848
+
+    [2] Claire Boyer, Yohann de Castro, Joseph Salmon. Adapting to unknown 
+    noise level in sparse deconvolution. Information and Inference, Oxford
+    University Press (OUP), 2017.
+    https://hal.archives-ouvertes.fr/hal-01588129
+    """
+    inf_bound = np.linalg.norm(phiAdjoint(acquis, dom, obj=obj), np.inf)
+    lambda_k = inf_bound / (np.sqrt(acquis.shape[0])*np.linalg.norm(acquis))
+    mesure_k = Mesure2D()
+    print("\n---- Début boucle homotopie ----")
+    for k in range(nIter):
+        (mesure_k, nrj_k) = SFW(acquis, dom, regul=lambda_k, nIter=nIter,
+                                mes_init=mesure_k, obj=obj, printInline=False)
+        residual = phi(mesure_k, dom, obj=obj) - acquis
+        sigma_k = np.std(residual)
+        print(f"* λ_{k} = {lambda_k:.2e} pour {mesure_k.N} ẟ-pics")
+        if sigma_k < sigma_target:
+            print("\n---- Condition d'arrêt homotopie :"
+                  + f" σ = {sigma_k:.4f} ----\n")
+            return(mesure_k, nrj_k, lambda_k)
+        else:
+            max_eta = np.max(etak(mesure_k, acquis, dom, lambda_k, obj=obj))
+            lambda_k *= max_eta / (1 + c)
+    print("----  Fin boucle homotopie  ----\n")
+    return(mesure_k, nrj_k, lambda_k)
+
+
 def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
                  saveFig=False, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
@@ -1026,7 +1192,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
                     label='GT spikes')
         plt.scatter(m.x[:, 0], m.x[:, 1], marker='+',
                     label='Recovered spikes')
-        plt.legend(loc=2)
+        plt.legend()
 
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
@@ -1190,4 +1356,3 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     else:
         raise ValueError('Unknown video format')
     return fig
-

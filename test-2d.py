@@ -939,16 +939,16 @@ R_y = covariance_pile(pile_sofi_test, y)
 
 FWMH = 2.2875/VRAI_N_ECH
 sigma = FWMH/(2*np.sqrt(2*np.log(2)))
-lambda_reg = 1e-9  # Param de relaxation pour Q_\lambda(y)
+lambda_reg = 3e-9  # Param de relaxation pour Q_\lambda(y)
 lambda_regul2 = 3e-5  # Param de relaxation pour P_\lambda(y_bar)
 iteration = m_ax0.N
 
 
 # Reconstruction
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, domaine, lambda_reg, nIter=iteration, 
-                       mesParIter=True)
+                                mesParIter=True)
 (m_moy, nrj_moy, mes_moy) = SFW(y, domaine, lambda_regul2, nIter=iteration,
-                                  mesParIter=True, obj='acquis')
+                                mesParIter=True, obj='acquis')
 
 print(f'm_Mx : {m_cov.N} Diracs')
 print(f'm_ax : {m_moy.N} Diracs')
