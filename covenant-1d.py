@@ -318,10 +318,10 @@ def phiAdjoint(cov_acquis, domain, obj='covar'):
     taille_y = len(cov_acquis)
     if obj == 'covar':
         out = np.outer(gaussienne(X_big), gaussienne(X_big))
-        eta = scipy.signal.convolve(out, cov_acquis, 'valid')/taille_y**2
+        eta = scipy.signal.convolve(out, cov_acquis, 'valid') / taille_y**2
         return np.diag(eta)
     if obj == 'acquis':
-        return np.convolve(gaussienne(X_big), cov_acquis,'valid')/taille_y
+        return np.convolve(gaussienne(X_big), cov_acquis,'valid') / taille_y
     else:
         raise TypeError
 

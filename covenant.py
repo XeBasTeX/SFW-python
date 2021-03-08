@@ -724,7 +724,7 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
 
     """
-    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj), dom, obj)
+    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
 
@@ -795,7 +795,7 @@ def covariance_pile(stack, stack_mean):
     covar = np.zeros((len(stack[0])**2, len(stack[0])**2))
     for i in range(len(stack)):
         covar += np.outer(stack[i, :] - stack_mean, stack[i, :] - stack_mean)
-    return covar/len(stack-1)
+    return covar / len(stack-1)
 
 
 # Le fameux algo de Sliding Frank Wolfe
@@ -1029,7 +1029,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
                                       method='L-BFGS-B',
                                       jac=grad_lasso_double,
                                       bounds=bounds_bfgs,
-                                      options={'disp': __deboggage__})
+                                      options={'disp': True})
         a_k_plus = (tes.x[:int(len(tes.x)/3)])
         x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
         # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
@@ -1147,7 +1147,7 @@ def homotopy(acquis, dom, sigma_target, c=1, nIter=10, obj='covar'):
     https://hal.archives-ouvertes.fr/hal-01588129
     """
     inf_bound = np.linalg.norm(phiAdjoint(acquis, dom, obj=obj), np.inf)
-    lambda_k = inf_bound / (np.sqrt(acquis.shape[0])*np.linalg.norm(acquis))
+    lambda_k = inf_bound / acquis.shape[0]
     mesure_k = Mesure2D()
     print("\n---- Début boucle homotopie ----")
     for k in range(nIter):
@@ -1155,16 +1155,289 @@ def homotopy(acquis, dom, sigma_target, c=1, nIter=10, obj='covar'):
                                 mes_init=mesure_k, obj=obj, printInline=False)
         residual = phi(mesure_k, dom, obj=obj) - acquis
         sigma_k = np.std(residual)
-        print(f"* λ_{k} = {lambda_k:.2e} pour {mesure_k.N} ẟ-pics")
+        print(f"* λ_{k} = {lambda_k:.2e} pour {mesure_k.N} ẟ-pics" +
+              f" à σ = {sigma_k:.2e}")
         if sigma_k < sigma_target:
             print("\n---- Condition d'arrêt homotopie :"
-                  + f" σ = {sigma_k:.4f} ----\n")
+                  + f" σ = {sigma_k:.2e} ----\n")
             return(mesure_k, nrj_k, lambda_k)
         else:
             max_eta = np.max(etak(mesure_k, acquis, dom, lambda_k, obj=obj))
             lambda_k *= max_eta / (1 + c)
     print("----  Fin boucle homotopie  ----\n")
     return(mesure_k, nrj_k, lambda_k)
+
+
+def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, 
+                    mesParIter=False, obj='covar', printInline=True):
+    r"""
+    Algorithme de Sliding Frank-Wolfe [1] pour la reconstruction de mesures
+    solution du CBLASSO [2]. On note :math:`n` la taille de l'acquisition
+    discrète :math:`y`, matrice de taille :math:`T_\mathrm{ech} \times n 
+    \times n`.
+
+    Si l'objectif est la covariance :
+
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) = 
+        \lambda |m|(\mathcal{X}) + \dfrac{\sigma}{2} + 
+            \dfrac{1}{2n^2} ||R_y - \Lambda (m)||^2. 
+            \quad (\mathcal{Q}_\lambda (y))
+
+    Si l'objectif est la moyenne :
+
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) = 
+        \lambda |m|(\mathcal{X}) + \dfrac{\sigma}{2} + 
+            \dfrac{1}{2n} ||\overline{y} - \Phi (m)||^2.
+                \quad (\mathcal{P}_\lambda (\overline{y}))
+
+
+    Paramètres
+    ----------
+    acquis : ndarray 
+            Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    regul : double, optional
+        Paramètre de régularisation :math:`\lambda`. The default is 1e-5.
+    nIter : int, optional
+        Nombre d'itérations maximum pour l'algorithme. The default is 5.
+    mes_init : Mesure2D, optional
+        Mesure pour initialiser l'algorithme. Si None est passé en argument, 
+        l'algorithme initialisera avec la mesure nulle. The default is None.
+    mesParIter : boolean, optional
+        Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les 
+        :math:`k` mesures calculées par SFW. The default is False.
+    obj : str, optional
+        Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Sorties
+    -------
+    mesure_k : Mesure2D
+            Dernière mesure reconstruite par SFW.
+    nrj_vecteur : ndarray
+                Vecteur qui donne l'énergie :math:`T_\lambda(m^k)` ou 
+                :math:`S_\lambda(m^k)` au fil des itérations.
+    mes_vecteur : ndarray
+                Vecteur des mesures reconstruites au fil des itérations.
+
+    Raises
+    ------
+    TypeError
+        Si l'objectif `obj` n'est pas connu, lève une exception.
+
+    Références
+    ----------
+    [1] Quentin Denoyelle, Vincent Duval, Gabriel Peyré, Emmanuel Soubies. 
+    The Sliding Frank-Wolfe Algorithm and its Application to Super-Resolution 
+    Microscopy. Inverse Problems, IOP Publishing, 2019.
+    https://hal.archives-ouvertes.fr/hal-01921604
+
+    [2] Claire Boyer, Yohann de Castro, Joseph Salmon. Adapting to unknown 
+    noise level in sparse deconvolution. Information and Inference, Oxford 
+    University Press (OUP), 2017.
+    https://hal.archives-ouvertes.fr/hal-01588129
+    """
+    N_ech_y = dom.N_ech  # hierher à adapter
+    N_grille = dom.N_ech**2
+    if obj == 'covar':
+        N_grille = N_grille**2
+    if mes_init == None:
+        mesure_k = Mesure2D()
+        a_k = np.empty((0, 0))
+        x_k = np.empty((0, 0))
+        x_k_demi = np.empty((0, 0))
+        Nk = 0
+    else:
+        mesure_k = mes_init
+        a_k = mes_init.a
+        x_k = mes_init.x
+        Nk = mesure_k.N
+    if mesParIter:
+        mes_vecteur = np.array([])
+    sq_n = np.sqrt(acquis.shape[0])
+    sigma_b = np.linalg.norm(acquis) / sq_n
+    nrj_vecteur = np.zeros(nIter)
+    for k in range(nIter):
+        if printInline:
+            print('\n' + 'Étape numéro ' + str(k))
+        eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
+        certif_abs = np.abs(eta_V_k)
+        x_star_index = np.unravel_index(np.argmax(certif_abs, axis=None),
+                                        eta_V_k.shape)
+        # passer de l'idx à xstar
+        x_star = np.array(x_star_index)[::-1]/N_ech_y
+        if printInline:
+            print(fr'* x^* index {x_star} max ' +
+                  fr'à {np.round(certif_abs[x_star_index], 2)}')
+
+        # Condition d'arrêt (étape 4)
+        if np.abs(eta_V_k[x_star_index]) < 1:
+            nrj_vecteur[k] = mesure_k.energie(dom, acquis,
+                                              regul, obj=obj)
+            if printInline:
+                print("\n\n---- Condition d'arrêt ----")
+            if mesParIter:
+                return(mesure_k, sigma_b, nrj_vecteur[:k], mes_vecteur)
+            return(mesure_k, sigma_b, nrj_vecteur[:k])
+
+        # Création du x positions estimées
+        mesure_k_demi = Mesure2D()
+        if x_k.size == 0:
+            x_k_demi = np.vstack([x_star])
+            lasso_guess = np.ones(Nk+1)
+        else:
+            x_k_demi = np.vstack([x_k, x_star])
+            lasso_guess = np.concatenate((a_k, [1.0]))
+
+        # On résout LASSO (étape 7)
+        def lasso(aa):
+            difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
+            attache = 0.5*np.linalg.norm(difference)**2/N_grille/sigma_b
+            parcimonie = regul*np.linalg.norm(aa, 1)
+            return attache + parcimonie + sigma_b/2
+
+        def grad_lasso(params):
+            aa = params
+            xx = x_k_demi
+            N = len(aa)
+            partial_a = N*[0]
+            residual = acquis - phi_vecteur(aa, xx, dom, obj)
+            if obj == 'covar':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1],
+                                          dom.sigma)
+                    cov_gauss = np.outer(gauss, gauss)
+                    normalis = sigma_b * dom.N_ech**4
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
+                return partial_a
+            elif obj == 'acquis':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1],
+                                          dom.sigma)
+                    normalis = sigma_b * dom.N_ech**2
+                    partial_a[i] = regul - np.sum(gauss*residual)/normalis
+                return partial_a
+            else:
+                raise TypeError('Unknown BLASSO target.')
+
+        res = scipy.optimize.minimize(lasso, lasso_guess,
+                                      jac=grad_lasso,
+                                      options={'disp': __deboggage__})
+        a_k_demi = res.x
+
+        if printInline:
+            print('* Optim convexe')
+        mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
+
+        # On résout double LASSO non-convexe (étape 8)
+        def lasso_double(params):
+            a_p = params[:int(len(params)/3)]
+            x_p = params[int(len(params)/3):]
+            x_p = x_p.reshape((len(a_p), 2))
+            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom,
+                                                              obj))**2
+            parcimonie = regul*np.linalg.norm(a_p, 1)
+            return attache/(sigma_b*N_grille) + parcimonie
+
+        def grad_lasso_double(params):
+            a_p = params[:int(len(params)/3)]
+            x_p = params[int(len(params)/3):]
+            x_p = x_p.reshape((len(a_p), 2))
+            N = len(a_p)
+            partial_a = N*[0]
+            partial_x = 2*N*[0]
+            residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+            if obj == 'covar':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1],
+                                          dom.sigma)
+                    cov_gauss = np.outer(gauss, gauss)
+                    normalis = sigma_b * N_grille
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
+
+                    gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.X - x_p[i, 0],
+                                                       dom.sigma)
+                    cov_der_x = np.outer(gauss_der_x, gauss)
+                    partial_x[2*i] = 2*a_p[i] * \
+                        np.sum(cov_der_x*residual) / (normalis)
+                    gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.sigma)
+                    cov_der_y = np.outer(gauss_der_y, gauss)
+                    partial_x[2*i+1] = 2*a_p[i] * \
+                        np.sum(cov_der_y*residual) / (normalis)
+
+                return(partial_a + partial_x)
+            elif obj == 'acquis':
+                for i in range(N):
+                    normalis = sigma_b * N_grille
+                    integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
+                                                          dom.Y - x_p[i, 1],
+                                                          dom.sigma))
+                    partial_a[i] = regul - integ/normalis
+
+                    grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.X - x_p[i, 0],
+                                                        dom.sigma)
+                    integ_x = np.sum(residual*grad_gauss_x) / (normalis)
+                    partial_x[2*i] = a_p[i] * integ_x
+                    grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.sigma)
+                    integ_y = np.sum(residual*grad_gauss_y) / (normalis)
+                    partial_x[2*i+1] = a_p[i] * integ_y
+
+                return(partial_a + partial_x)
+            else:
+                raise TypeError('Unknown BLASSO target.')
+
+        # On met la graine au format array pour scipy...minimize
+        # il faut en effet que ça soit un vecteur
+        initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
+        a_part = list(zip([0]*(Nk+1), [30]*(Nk+1)))
+        x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
+        bounds_bfgs = a_part + x_part
+        tes = scipy.optimize.minimize(lasso_double, initial_guess,
+                                      method='L-BFGS-B',
+                                      jac=grad_lasso_double,
+                                      bounds=bounds_bfgs,
+                                      options={'disp': __deboggage__})
+        a_k_plus = (tes.x[:int(len(tes.x)/3)])
+        x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
+
+        # Mise à jour des paramètres avec retrait des Dirac nuls
+        mesure_k = Mesure2D(a_k_plus, x_k_plus)
+        mesure_k = mesure_k.prune()
+        mesure_k = merge_spikes(mesure_k)
+        a_k = mesure_k.a
+        x_k = mesure_k.x
+        Nk = mesure_k.N
+        if printInline:
+            print(f'* Optim non-convexe : {Nk} Diracs')
+
+        # Graphe et énergie
+        nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
+        if printInline:
+            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
+        if mesParIter == True:
+            mes_vecteur = np.append(mes_vecteur, [mesure_k])
+            
+        # Update noise level
+        sigma_b = np.linalg.norm(acquis - phi(mesure_k, dom, obj)) / sq_n
+
+    # Fin des itérations
+    if printInline:
+        print("\n\n---- Fin de la boucle ----")
+    if mesParIter:
+        return(mesure_k, sigma_b, nrj_vecteur, mes_vecteur)
+    return(mesure_k, sigma_b, nrj_vecteur)
 
 
 def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,

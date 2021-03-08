@@ -39,6 +39,12 @@ GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 
 
+def gaussienne_1D(line, sigma_g=sigma):
+    '''Gaussienne 1D centrée en 0'''
+    normalis = sigma_g * (2*np.pi)
+    return normalis * np.exp(-np.power(line,2)/(2*sigma_g**2))
+
+
 def gaussienne(carre, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
     expo = np.exp(-np.power(carre, 2)/(2*sigma_g**2))
@@ -1047,7 +1053,7 @@ if __saveVid__:
 # plt.legend()
 # plt.subplot(212)
 # plt.plot(aqsf, lasso_grad_test, color='orange', label='Grad')
-# plt.plot(aqsf, lasso_grad_fe, color='green', label='Grad FE')
+# plt.plot(aqsf, lasso_grad_fe, '--', color='green', label='Grad FE')
 # plt.grid()
 # plt.legend()
 
@@ -1258,26 +1264,47 @@ plt.title('Convol mieux ?', fontsize=20)
 # plt.colorbar()
 # plt.title('Convol vieux', fontsize=20)
 
-#%% Amélioration calcul certificat
+#%% Spatial separable, Depthwise ? convolution
 
 N_ECH = 2**4 # Taux d'échantillonnage
 X_GAUCHE = 0
 X_DROIT = 1 
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
-GRID_BIG = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
+R_y = m_ax0.covariance_kernel(X, Y)
+
+GRID_BIG = np.linspace(-1, 1, N_ECH)
 X_big, Y_big = np.meshgrid(GRID_BIG, GRID_BIG)
 
-R_y = m_ax0.covariance_kernel(X, Y)
-out = np.outer(gaussienne_2D(X_big, Y_big), gaussienne_2D(X_big, Y_big))
+
+gob = gaussienne_1D(np.linspace(-1, 1, 2*N_ECH**2 - 1))
+gus = np.reshape(gob, (-1, 1))
+gaus = gaussienne_2D(X_big, Y_big).reshape((N_ECH)**2, )
 
 
-sortie = scipy.signal.convolve2d(R_y, out, 'valid')
-sortie = np.diag(sortie)
-sortie = sortie.reshape(N_ECH, N_ECH)
+sortie3 = np.zeros((N_ECH**2, N_ECH**2))
+for i in range(len(R_y)):
+    sortie3[i,:] = np.convolve(R_y[i,:], gaus, 'valid')/N_ECH**2
+for i in range(len(R_y)):
+    sortie3[:,i] = np.convolve(sortie3[:,i], gaus, 'valid')/N_ECH**2
+sortie3 = np.diag(sortie3)
+sortie3 = sortie3.reshape(N_ECH, N_ECH)
+
+
+# sortie = scipy.signal.oaconvolve(R_y, gus.T, 'same', axes=0)
+# sortie2 = scipy.signal.oaconvolve(sortie, gus, 'valid', axes=1)
+# sortie2 = np.diag(sortie2)
+# sortie2 = sortie2.reshape(N_ECH, N_ECH)
 
 plt.figure()
-plt.imshow(sortie)
+plt.subplot(121)
+plt.imshow(phiAdjointSimps(R_y, domain))
+plt.title('Simps', fontsize=20)
+plt.colorbar()
+plt.subplot(122)
+plt.imshow(sortie3)
+plt.title('Convol', fontsize=20)
+plt.colorbar()
 
 
 # #%%

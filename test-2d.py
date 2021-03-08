@@ -10,7 +10,7 @@ __author__ = 'Bastien'
 __team__ = 'Morpheme'
 __saveFig__ = False
 __saveVid__ = False
-__deboggage__ = True
+__deboggage__ = False
 
 
 import numpy as np

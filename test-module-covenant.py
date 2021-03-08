@@ -11,14 +11,14 @@ __saveVid__ = False
 
 
 import os
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 import numpy as np
 import matplotlib.pyplot as plt
 import covenant
 
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
 # np.random.seed(90)
-
 
 N_ECH = 2**4  # Taux d'échantillonnage
 X_GAUCHE = 0
@@ -34,9 +34,9 @@ TYPE_BRUITS = 'gauss'
 
 domain = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y, SIGMA)
 bruits_t = covenant.Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
-m_ax0 = covenant.mesure_aleatoire(10, domain)
+m_ax0 = covenant.mesure_aleatoire(9, domain)
 
-T_ECH = 50
+T_ECH = 100
 pile = covenant.pile_aquisition(m_ax0, domain, bruits_t, T_ECH)
 y_bar = np.mean(pile, axis=0)
 R_y = covenant.covariance_pile(pile, y_bar)
@@ -54,6 +54,10 @@ test_acquis = R_y
 (m_top, nrj_top, lambda_top) = covenant.homotopy(test_acquis, domain, 
                                                  SIGMA_BRUITS, obj=test_obj,
                                                  nIter=2*m_ax0.N, c=1)
+
+(m_cov, nrj_cov, mes_cov) = covenant.SFW(test_acquis, domain, regul=1e-5,
+                                         nIter=m_ax0.N, mesParIter=True,
+                                         obj=test_obj, printInline=False)
 if m_top.N == 0:
     dist_x_top = np.inf
 else:
@@ -65,13 +69,48 @@ else:
 print(f'm_top : {m_top.N} Diracs')
 print(f'm_ax0 : {m_ax0.N} Diracs')
 print(fr'Dist W_1 des x de top : {dist_x_top:.3f}')
-
 if m_top.N > 0:
     certificat_V_top = covenant.etak(m_top, test_acquis, domain, lambda_top,
                                  obj=test_obj)
     covenant.plot_results(m_top, m_ax0, domain, bruits_t, y_bar, nrj_top,
                           certificat_V_top, obj=test_obj, saveFig=__saveFig__,
                           title='homotopie-covar-certificat-2d')
+
+
+#%% SFW sur CBLasso
+
+
+test_obj = 'covar'
+test_acquis = R_y
+lambda_regul = 4e-5 # Param de relaxation pour SFW R_y
+iteration = m_ax0.N
+
+
+(m_cbl, sigma_cbl, nrj_cbl) = covenant.concomitant_SFW(test_acquis, domain,
+                                          regul=lambda_regul,
+                                          nIter=iteration, mesParIter=False,
+                                          obj=test_obj, printInline=False)
+if m_top.N == 0:
+    dist_x_top = np.inf
+else:
+    try:
+        dist_x_top = covenant.wasserstein_metric(m_top, m_ax0)
+    except ValueError:
+        dist_x_top = np.inf
+
+print(f'm_cbl : {m_cbl.N} Diracs')
+print(f'm_ax0 : {m_ax0.N} Diracs')
+print(fr'Dist W_1 des x de top : {dist_x_top:.3f}')
+if m_top.N > 0:
+    certificat_V_cbl = covenant.etak(m_cbl, test_acquis, domain, lambda_regul,
+                                     obj=test_obj)
+    covenant.plot_results(m_cbl, m_ax0, domain, bruits_t, y_bar, nrj_cbl,
+                          certificat_V_cbl, obj=test_obj, saveFig=__saveFig__,
+                          title='cbl-covar-certificat-2d')
+
+
+
+
 
 
 #%% SFW sur SOFItool
@@ -103,7 +142,7 @@ m_ax0 = covenant.Mesure2D(np.ones(emitters_loc_test.shape[0]),
 # plot_results(m_ax0, domaine, nrj_cov, certif_V, y)
 
 pile_sofi_test = pile_sofi[:, bas_red:haut_red, bas_red:haut_red]
-pile_sofi_test = pile_sofi_test
+pile_sofi_test = pile_sofi_test / np.max(pile_sofi_test)
 pile_sofi_test_moy = np.mean(pile_sofi_test, axis=0)
 
 FWMH = 2.2875 / VRAI_N_ECH
@@ -119,9 +158,11 @@ y_bar = np.mean(pile_sofi_test, axis=0)
 R_y = covenant.covariance_pile(pile_sofi_test, y_bar)
 SIGMA_BRUITS = 1e-5
 
-test_acquis = R_y
-test_obj = 'covar'
+# test_acquis = R_y
+# test_obj = 'covar'
 
+test_obj = 'acquis'
+test_acquis = y_bar
 
 (m_top, nrj_top, lambda_top) = covenant.homotopy(test_acquis, domaine, 
                                                  SIGMA_BRUITS, obj=test_obj,
@@ -145,81 +186,81 @@ if m_top.N > 0:
                           title='homotopie-covar-certificat-2d')
 
 
-# #%% SFW classique
+#% SFW classique sur SOFItool
 
-# # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-# # lambda_regul = 2e-4  # Param de relaxation pour SFW R_y
-# # lambda_regul2 = 1e-1  # Param de relaxation pour SFW y_moy
+# Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
+# lambda_regul = 2e-4  # Param de relaxation pour SFW R_y
+# lambda_regul2 = 1e-1  # Param de relaxation pour SFW y_moy
 
-# # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
-# # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
-# # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
+# Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
+lambda_regul = 3e-7 # Param de relaxation pour SFW R_y
+lambda_regul2 = 1e-4 # Param de relaxation pour SFW y_moy
 
 # # # Pour Q_0(y_0) P_0(y_0)
 # lambda_regul = 1e-8 # Param de relaxation pour SFW R_y
 # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
 
-# iteration = m_ax0.N
+iteration = m_ax0.N
 
 
-# (m_cov, nrj_cov, mes_cov) = covenant.SFW(R_y, domain,
-#                                          regul=lambda_regul,
-#                                          nIter=iteration, mesParIter=True,
-#                                          obj='covar')
-# (m_moy, nrj_moy, mes_moy) = covenant.SFW(y_bar, domain,
-#                                          regul=lambda_regul2,
-#                                          nIter=iteration, mesParIter=True,
-#                                          obj='acquis')
+(m_cov, nrj_cov, mes_cov) = covenant.SFW(R_y, domaine,
+                                          regul=lambda_regul,
+                                          nIter=iteration, mesParIter=True,
+                                          obj='covar')
+(m_moy, nrj_moy, mes_moy) = covenant.SFW(y_bar, domaine,
+                                          regul=lambda_regul2,
+                                          nIter=iteration, mesParIter=True,
+                                          obj='acquis')
 
-# print(f'm_Mx : {m_cov.N} Diracs')
-# print(f'm_ax : {m_moy.N} Diracs')
-# print(f'm_ax0 : {m_ax0.N} Diracs')
+print(f'm_Mx : {m_cov.N} Diracs')
+print(f'm_ax : {m_moy.N} Diracs')
+print(f'm_ax0 : {m_ax0.N} Diracs')
 
-# certificat_V = covenant.etak(m_cov, R_y, domain, lambda_regul,
-#                              obj='covar')
-# certificat_V_moy = covenant.etak(m_moy, y_bar, domain, lambda_regul2,
-#                                  obj='acquis')
+certificat_V = covenant.etak(m_cov, R_y, domaine, lambda_regul,
+                              obj='covar')
+certificat_V_moy = covenant.etak(m_moy, y_bar, domaine, lambda_regul2,
+                                  obj='acquis')
 
-# if __saveFig__:
-#     plt.figure(figsize=(12, 4))
-#     plt.subplot(121)
-#     plt.imshow(m_cov.covariance_kernel(domain))
-#     plt.colorbar()
-#     plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
-#     plt.subplot(122)
-#     plt.imshow(R_y)
-#     plt.colorbar()
-#     plt.title(r'$R_y$', fontsize=40)
-
-
-# # Métrique de déconvolution : distance de Wasserstein
-# try:
-#     dist_x_cov = covenant.wasserstein_metric(m_cov, m_ax0)
-# except ValueError:
-#     dist_x_cov = np.inf
-# try:
-#     dist_x_moy = covenant.wasserstein_metric(m_moy, m_ax0)
-# except ValueError:
-#     dist_x_moy = np.inf
-
-# print(fr'Dist W_1 des x de Q_\lambda : {dist_x_cov:.3f}')
-# print(fr'Dist W_1 des x de P_\lambda : {dist_x_moy:.3f}')
+if __saveFig__:
+    plt.figure(figsize=(12, 4))
+    plt.subplot(121)
+    plt.imshow(m_cov.covariance_kernel(domain))
+    plt.colorbar()
+    plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
+    plt.subplot(122)
+    plt.imshow(R_y)
+    plt.colorbar()
+    plt.title(r'$R_y$', fontsize=40)
 
 
-# # Afficher les résultats
-# y_simul = m_cov.kernel(domain)
-# if m_cov.N > 0:
-#     covenant.plot_results(m_cov, m_ax0, domain, bruits_t, y_bar, nrj_cov,
-#                           certificat_V, saveFig=__saveFig__)
-# if m_moy.N > 0:
-#     covenant.plot_results(m_moy, m_ax0, domain, bruits_t, y_bar, nrj_moy,
-#                           certificat_V_moy, title='covar-moy-certificat-2d',
-#                           obj='acquis', saveFig=__saveFig__)
+# Métrique de déconvolution : distance de Wasserstein
+try:
+    dist_x_cov = covenant.wasserstein_metric(m_cov, m_ax0)
+except ValueError:
+    dist_x_cov = np.inf
+try:
+    dist_x_moy = covenant.wasserstein_metric(m_moy, m_ax0)
+except ValueError:
+    dist_x_moy = np.inf
 
-# if __saveVid__:
-#     covenant.gif_pile(pile, m_ax0, y_bar, domain)
-#     if m_cov.N > 0:
-#         covenant.gif_results(y_bar, m_ax0, mes_cov, domain)
+print(fr'Dist W_1 des x de Q_\lambda : {dist_x_cov:.3f}')
+print(fr'Dist W_1 des x de P_\lambda : {dist_x_moy:.3f}')
+
+
+# Afficher les résultats
+y_simul = m_cov.kernel(domain)
+if m_cov.N > 0:
+    covenant.plot_results(m_cov, m_ax0, domaine, bruits_t, y_bar, nrj_cov,
+                          certificat_V, saveFig=__saveFig__)
+if m_moy.N > 0:
+    covenant.plot_results(m_moy, m_ax0, domaine, bruits_t, y_bar, nrj_moy,
+                          certificat_V_moy, title='covar-moy-certificat-2d',
+                          obj='acquis', saveFig=__saveFig__)
+
+if __saveVid__:
+    covenant.gif_pile(pile, m_ax0, y_bar, domain)
+    if m_cov.N > 0:
+        covenant.gif_results(y_bar, m_ax0, mes_cov, domain)
 
 
 
