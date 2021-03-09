@@ -41,8 +41,8 @@ X, Y = np.meshgrid(GRID, GRID)
 
 def gaussienne_1D(line, sigma_g=sigma):
     '''Gaussienne 1D centrée en 0'''
-    normalis = sigma_g * (2*np.pi)
-    return normalis * np.exp(-np.power(line,2)/(2*sigma_g**2))
+    normalis = sigma_g * np.sqrt(2*np.pi)
+    return np.exp(-np.power(line,2)/(2*sigma_g**2)) / normalis
 
 
 def gaussienne(carre, sigma_g=sigma):
@@ -50,7 +50,7 @@ def gaussienne(carre, sigma_g=sigma):
     expo = np.exp(-np.power(carre, 2)/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
     # normalis = 1
-    return expo/normalis
+    return expo / normalis
 
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
@@ -59,7 +59,7 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
     # normalis = 1
-    return expo/normalis
+    return expo / normalis
 
 
 # def gaussienne_eval(params):
@@ -981,194 +981,194 @@ if __saveVid__:
         gif_results(y, m_ax0, mes_cov, domain)
 
 
-# #%% Accélération étape 7
+#%% Accélération étape 7
 
-# dom = domain
+dom = domain
 
-# # obj='covar'
-# # acquis = R_y
-# # regul = lambda_regul
+# obj='covar'
+# acquis = R_y
+# regul = lambda_regul
 
-# obj = 'acquis'
-# acquis = y
-# regul = lambda_regul2
+obj = 'acquis'
+acquis = y
+regul = lambda_regul2
 
-# idd = 0
-# xxx = mes_cov[idd].x
-# para = mes_cov[idd].a
-# N_grille = acquis.size
-# # para = np.random.random(mes_cov[idd].a.shape)
-
-
-# def lasso(aa):
-#     difference = acquis - phi_vecteur(aa, xxx, dom, obj)
-#     attache = 0.5*np.linalg.norm(difference)**2/N_grille
-#     parcimonie = regul*np.linalg.norm(aa, 1)
-#     return attache + parcimonie
+idd = 0
+xxx = mes_cov[idd].x
+para = mes_cov[idd].a
+N_grille = acquis.size
+# para = np.random.random(mes_cov[idd].a.shape)
 
 
-# def grad_lasso(params):
-#     aa = params
-#     xx = xxx
-#     N = len(aa)
-#     partial_a = N*[0]
-#     residual = acquis - phi_vecteur(aa, xx, dom, obj)
-#     if obj == 'covar':
-#         for i in range(N):
-#             gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
-#             cov_gauss = np.outer(gauss, gauss)
-#             partial_a[i] = regul - np.sum(cov_gauss*residual)/dom.N_ech**4
-#         return partial_a
-#     elif obj == 'acquis':
-#         for i in range(N):
-#             gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
-#             partial_a[i] = regul - np.sum(gauss*residual)/dom.N_ech**2
-#         return partial_a
-#     else:
-#         raise TypeError('Unknown BLASSO target.')
+def lasso(aa):
+    difference = acquis - phi_vecteur(aa, xxx, dom, obj)
+    attache = 0.5*np.linalg.norm(difference)**2 / N_grille
+    parcimonie = regul*np.linalg.norm(aa, 1)
+    return attache + parcimonie
 
 
-# print('\nErreur sur le gradient : ')
-# print(scipy.optimize.check_grad(lasso, grad_lasso, para))
-
-# res_jac = scipy.optimize.minimize(lasso, para,
-#                                   jac=grad_lasso,
-#                                   options={'disp': True})
-
-# # Juste pour tester si le gradient est bon
-# eps = np.sqrt(np.finfo(float).eps)
-# aqsf = np.linspace(-100,100,1000)
-# lasso_test = [0]*len(aqsf)
-# lasso_grad_test = [0]*len(aqsf)
-# lasso_grad_fe = [0]*len(aqsf)
-# for i in range(len(aqsf)):
-#     lasso_test[i] = lasso([aqsf[i]])
-#     lasso_grad_test[i] = grad_lasso([aqsf[i]])
-#     lasso_grad_fe[i] = scipy.optimize.approx_fprime([aqsf[i]], lasso, eps)
-
-# plt.figure(figsize=(12,12))
-# plt.subplot(211)
-# plt.plot(aqsf, lasso_test, label='Lasso')
-# plt.grid()
-# plt.legend()
-# plt.subplot(212)
-# plt.plot(aqsf, lasso_grad_test, color='orange', label='Grad')
-# plt.plot(aqsf, lasso_grad_fe, '--', color='green', label='Grad FE')
-# plt.grid()
-# plt.legend()
-
-# #%% Accélération étape 8
+def grad_lasso(params):
+    aa = params
+    xx = xxx
+    N = len(aa)
+    partial_a = N*[0]
+    residual = acquis - phi_vecteur(aa, xx, dom, obj)
+    if obj == 'covar':
+        for i in range(N):
+            gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+            cov_gauss = np.outer(gauss, gauss)
+            partial_a[i] = regul - np.sum(cov_gauss*residual)/dom.N_ech**4
+        return partial_a
+    elif obj == 'acquis':
+        for i in range(N):
+            gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+            partial_a[i] = regul - np.sum(gauss*residual)/dom.N_ech**2
+        return partial_a
+    else:
+        raise TypeError('Unknown BLASSO target.')
 
 
-# # obj = 'covar'
-# # acquis = R_y
-# # regul = lambda_regul
+print('\nErreur sur le gradient : ')
+print(scipy.optimize.check_grad(lasso, grad_lasso, para))
 
-# obj = 'acquis'
-# acquis = y
-# regul = lambda_regul2
+res_jac = scipy.optimize.minimize(lasso, para,
+                                  jac=grad_lasso,
+                                  options={'disp': True})
 
+# Juste pour tester si le gradient est bon
+eps = np.sqrt(np.finfo(float).eps)
+aqsf = np.linspace(-100,100,1000)
+lasso_test = [0]*len(aqsf)
+lasso_grad_test = [0]*len(aqsf)
+lasso_grad_fe = [0]*len(aqsf)
+for i in range(len(aqsf)):
+    lasso_test[i] = lasso([aqsf[i]])
+    lasso_grad_test[i] = grad_lasso([aqsf[i]])
+    lasso_grad_fe[i] = scipy.optimize.approx_fprime([aqsf[i]], lasso, eps)
 
-# dom = domain
-# idd = 0
-# par = np.append(mes_cov[idd].a, np.reshape(mes_cov[idd].x, -1))
-# par = np.random.random(3*mes_cov[idd].N)
-# N_grille = acquis.size
+plt.figure(figsize=(12,12))
+plt.subplot(211)
+plt.plot(aqsf, lasso_test, label='Lasso')
+plt.grid()
+plt.legend()
+plt.subplot(212)
+plt.plot(aqsf, lasso_grad_test, color='orange', label='Grad')
+plt.plot(aqsf, lasso_grad_fe, '--', color='green', label='Grad FE')
+plt.grid()
+plt.legend()
 
-# def lasso_double(params):
-#     a_p = params[:int(len(params)/3)]
-#     x_p = params[int(len(params)/3):]
-#     x_p = x_p.reshape((len(a_p), 2))
-#     residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
-#     attache = 0.5*np.linalg.norm(residual)**2/N_grille
-#     parcimonie = regul*np.linalg.norm(a_p, 1)
-#     return attache + parcimonie
-
-
-# def grad_lasso_double(params):
-#     a_p = params[:int(len(params)/3)]
-#     x_p = params[int(len(params)/3):]
-#     x_p = x_p.reshape((len(a_p), 2))
-#     N = len(a_p)
-#     partial_a = N*[0]
-#     partial_x = 2*N*[0]
-#     residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
-#     if obj == 'covar':
-#         for i in range(N):
-#             gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
-#             cov_gauss = np.outer(gauss, gauss)
-#             partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
-
-#             gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
-#                                                 dom.Y - x_p[i, 1],
-#                                                 dom.X - x_p[i, 0])
-#             cov_der_x = np.outer(gauss_der_x, gauss)
-#             partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)/N_grille
-#             gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
-#                                                 dom.Y - x_p[i, 1],
-#                                                 dom.Y - x_p[i, 1])
-#             cov_der_y = np.outer(gauss_der_y, gauss)
-#             partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)/N_grille
-
-#         return(partial_a + partial_x)
-#     elif obj == 'acquis':
-#         for i in range(N):
-#             integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
-#                                                   dom.Y - x_p[i, 1]))
-#             partial_a[i] = regul - integ/N_grille
-
-#             grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
-#                                                 dom.Y - x_p[i, 1],
-#                                                 dom.X - x_p[i, 0])
-#             integ_x = np.sum(residual*grad_gauss_x) / N_grille
-#             partial_x[2*i] = a_p[i] * integ_x
-#             grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
-#                                                 dom.Y - x_p[i, 1],
-#                                                 dom.Y - x_p[i, 1])
-#             integ_y = np.sum(residual*grad_gauss_y) / N_grille
-#             partial_x[2*i+1] = a_p[i] * integ_y
-
-#         return(partial_a + partial_x)
-#     else:
-#         raise TypeError('Unknown BLASSO target.')
+#%% Accélération étape 8
 
 
+# obj = 'covar'
+# acquis = R_y
+# regul = lambda_regul
 
-# eps = np.sqrt(np.finfo(float).eps)
-# print(scipy.optimize.approx_fprime(par, lasso_double, eps))
-# print(grad_lasso_double(par))
-
-# print('\nErreur sur le gradient : ')
-# print(scipy.optimize.check_grad(lasso_double, grad_lasso_double, par))
-
-# res_jac = scipy.optimize.minimize(lasso_double, par,
-#                                   jac=grad_lasso_double,
-#                                   options={'disp': True})
+obj = 'acquis'
+acquis = y
+regul = lambda_regul2
 
 
-# # Juste pour tester si le gradient est bon
-# eps = np.sqrt(np.finfo(float).eps)
-# aqsf = np.linspace(-1,1.5,1000)
-# lasso_d_test = [0]*len(aqsf)
-# lasso_d_grad_test = [0]*len(aqsf)
-# lasso_d_grad_fe = [0]*len(aqsf)
-# for i in range(len(aqsf)):
-#     evol = np.append(par[:2], aqsf[i])
-#     lasso_d_test[i] = lasso_double(evol)
-#     lasso_d_grad_test[i] = grad_lasso_double(evol)[2]
-#     lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
-#                                                       eps)[2]
+dom = domain
+idd = 0
+par = np.append(mes_cov[idd].a, np.reshape(mes_cov[idd].x, -1))
+par = np.random.random(3*mes_cov[idd].N)
+N_grille = acquis.size
 
-# plt.figure(figsize=(12,12))
-# plt.subplot(211)
-# plt.plot(aqsf, lasso_d_test, label='D--Lasso')
-# plt.grid()
-# plt.legend()
-# plt.subplot(212)
-# plt.plot(aqsf, lasso_d_grad_test, color='orange', label='Grad')
-# plt.plot(aqsf, lasso_d_grad_fe, color='green', label='Grad FE')
-# plt.grid()
-# plt.legend()
+def lasso_double(params):
+    a_p = params[:int(len(params)/3)]
+    x_p = params[int(len(params)/3):]
+    x_p = x_p.reshape((len(a_p), 2))
+    residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+    attache = 0.5*np.linalg.norm(residual)**2/N_grille
+    parcimonie = regul*np.linalg.norm(a_p, 1)
+    return attache + parcimonie
+
+
+def grad_lasso_double(params):
+    a_p = params[:int(len(params)/3)]
+    x_p = params[int(len(params)/3):]
+    x_p = x_p.reshape((len(a_p), 2))
+    N = len(a_p)
+    partial_a = N*[0]
+    partial_x = 2*N*[0]
+    residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+    if obj == 'covar':
+        for i in range(N):
+            gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
+            cov_gauss = np.outer(gauss, gauss)
+            partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
+
+            gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                dom.Y - x_p[i, 1],
+                                                dom.X - x_p[i, 0])
+            cov_der_x = np.outer(gauss_der_x, gauss)
+            partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)/N_grille
+            gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                dom.Y - x_p[i, 1],
+                                                dom.Y - x_p[i, 1])
+            cov_der_y = np.outer(gauss_der_y, gauss)
+            partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)/N_grille
+
+        return(partial_a + partial_x)
+    elif obj == 'acquis':
+        for i in range(N):
+            integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
+                                                  dom.Y - x_p[i, 1]))
+            partial_a[i] = regul - integ/N_grille
+
+            grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                dom.Y - x_p[i, 1],
+                                                dom.X - x_p[i, 0])
+            integ_x = np.sum(residual*grad_gauss_x) / N_grille
+            partial_x[2*i] = a_p[i] * integ_x
+            grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                dom.Y - x_p[i, 1],
+                                                dom.Y - x_p[i, 1])
+            integ_y = np.sum(residual*grad_gauss_y) / N_grille
+            partial_x[2*i+1] = a_p[i] * integ_y
+
+        return(partial_a + partial_x)
+    else:
+        raise TypeError('Unknown BLASSO target.')
+
+
+
+eps = np.sqrt(np.finfo(float).eps)
+print(scipy.optimize.approx_fprime(par, lasso_double, eps))
+print(grad_lasso_double(par))
+
+print('\nErreur sur le gradient : ')
+print(scipy.optimize.check_grad(lasso_double, grad_lasso_double, par))
+
+res_jac = scipy.optimize.minimize(lasso_double, par,
+                                  jac=grad_lasso_double,
+                                  options={'disp': True})
+
+
+# Juste pour tester si le gradient est bon
+eps = np.sqrt(np.finfo(float).eps)
+aqsf = np.linspace(-1,1.5,1000)
+lasso_d_test = [0]*len(aqsf)
+lasso_d_grad_test = [0]*len(aqsf)
+lasso_d_grad_fe = [0]*len(aqsf)
+for i in range(len(aqsf)):
+    evol = np.append(par[:2], aqsf[i])
+    lasso_d_test[i] = lasso_double(evol)
+    lasso_d_grad_test[i] = grad_lasso_double(evol)[2]
+    lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
+                                                      eps)[2]
+
+plt.figure(figsize=(12,12))
+plt.subplot(211)
+plt.plot(aqsf, lasso_d_test, label='D--Lasso')
+plt.grid()
+plt.legend()
+plt.subplot(212)
+plt.plot(aqsf, lasso_d_grad_test, color='orange', label='Grad')
+plt.plot(aqsf, lasso_d_grad_fe, color='green', label='Grad FE')
+plt.grid()
+plt.legend()
 
 
 # #%% Sanity check très basique : c bon

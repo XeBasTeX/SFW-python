@@ -46,6 +46,21 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
     return normalis*expo
 
 
+# def gaussienne(carre, sigma_g=sigma):
+#     '''Gaussienne centrée en 0'''
+#     expo = np.exp(-np.power(carre,2)/(2*sigma_g**2))
+#     normalis = sigma_g * (2*np.pi)
+#     return expo * normalis
+
+
+# def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
+#     '''Gaussienne centrée en 0'''
+#     expo = np.exp(-(np.power(X_domain,2) +
+#                     np.power(Y_domain,2))/(2*sigma_g**2))
+#     normalis = sigma_g * (2*np.pi)
+#     return expo * normalis
+
+
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g=sigma):
     '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
     rule derivation'''
@@ -422,7 +437,7 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     r'''Certificat $\eta$ assicé à la mesure'''
     # eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj),
     #                          dom, obj)
-    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
+    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
 
@@ -917,12 +932,12 @@ emitters_loc_test = [el for el in emitters_loc
                      haut_red/VRAI_N_ECH]
 
 emitters_loc_test = np.vstack(emitters_loc_test) - bas_red/VRAI_N_ECH
-emitters_loc_test = reduc*emitters_loc_test
+emitters_loc_test = reduc * emitters_loc_test
 m_ax0 = Mesure2D(np.ones(emitters_loc_test.shape[0]), emitters_loc_test)
 # plot_results(m_ax0, domaine, nrj_cov, certif_V, y)
 
 pile_sofi_test = pile_sofi[:, bas_red:haut_red, bas_red:haut_red]
-pile_sofi_test = pile_sofi_test/np.max(pile_sofi_test)
+pile_sofi_test = pile_sofi_test / np.max(pile_sofi_test)
 pile_sofi_test_moy = np.mean(pile_sofi_test, axis=0)
 
 
@@ -933,21 +948,21 @@ GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 domaine = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 
-y = np.mean(pile_sofi_test, axis=0)
-R_y = covariance_pile(pile_sofi_test, y)
+y_bar = np.mean(pile_sofi_test, axis=0)
+R_y = covariance_pile(pile_sofi_test, y_bar)
 
 
-FWMH = 2.2875/VRAI_N_ECH
-sigma = FWMH/(2*np.sqrt(2*np.log(2)))
-lambda_reg = 3e-9  # Param de relaxation pour Q_\lambda(y)
+FWMH = 2.2875 / VRAI_N_ECH
+sigma = FWMH / (2*np.sqrt(2*np.log(2)))
+lambda_regul = 3e-9  # Param de relaxation pour Q_\lambda(y)
 lambda_regul2 = 3e-5  # Param de relaxation pour P_\lambda(y_bar)
 iteration = m_ax0.N
 
 
 # Reconstruction
-(m_cov, nrj_cov, mes_cov) = SFW(R_y, domaine, lambda_reg, nIter=iteration, 
+(m_cov, nrj_cov, mes_cov) = SFW(R_y, domaine, lambda_regul, nIter=iteration, 
                                 mesParIter=True)
-(m_moy, nrj_moy, mes_moy) = SFW(y, domaine, lambda_regul2, nIter=iteration,
+(m_moy, nrj_moy, mes_moy) = SFW(y_bar, domaine, lambda_regul2, nIter=iteration,
                                 mesParIter=True, obj='acquis')
 
 print(f'm_Mx : {m_cov.N} Diracs')
@@ -971,16 +986,58 @@ print(fr'Dist W_1 des x de Q_\lambda : {dist_x_cov:.3f}')
 print(fr'Dist W_1 des x de P_\lambda : {dist_x_moy:.3f}')
 
 if m_cov.a.size > 0:
-    certif_V = etak(m_cov, R_y, domaine, lambda_reg)
-    plot_results(m_cov, domaine, nrj_cov, certif_V, y)
+    certif_V = etak(m_cov, R_y, domaine, lambda_regul)
+    plot_results(m_cov, domaine, nrj_cov, certif_V, y_bar)
 if m_moy.a.size > 0:
-    certificat_V_moy = etak(m_moy, y, domaine, lambda_regul2,
+    certificat_V_moy = etak(m_moy, y_bar, domaine, lambda_regul2,
                         obj='acquis')
-    plot_results(m_moy, domaine, nrj_moy, certificat_V_moy, y,
+    plot_results(m_moy, domaine, nrj_moy, certificat_V_moy, y_bar,
                   title='test-moy-certificat-2d', obj='acquis')
 
 if __saveVid__ and m_cov.a.size > 0:
-    gif_results(y, m_ax0, mes_cov, domaine)
+    gif_results(y_bar, m_ax0, mes_cov, domaine)
+
+#%%
+
+import covenant
+
+
+SIGMA = sigma
+domain = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y, SIGMA)
+
+(m_cov, nrj_cov, mes_cov) = covenant.SFW(R_y, domain,
+                                          regul=lambda_regul,
+                                          nIter=iteration, mesParIter=True,
+                                          obj='covar')
+(m_moy, nrj_moy, mes_moy) = covenant.SFW(y_bar, domain,
+                                          regul=lambda_regul2,
+                                          nIter=iteration, mesParIter=True,
+                                          obj='acquis')
+
+print(f'm_Mx : {m_cov.N} Diracs')
+print(f'm_ax : {m_moy.N} Diracs')
+print(f'm_ax0 : {m_ax0.N} Diracs')
+
+
+#%%
+
+import covenant
+
+
+mes_nulle_tst = Mesure2D()
+tst_marche = etak(mes_nulle_tst, R_y, domaine, lambda_regul)
+mes_nulle = covenant.Mesure2D()
+tst = covenant.etak(mes_nulle, R_y, domain, lambda_regul)
+
+
+plt.figure()
+plt.subplot(121)
+plt.imshow(tst)
+plt.colorbar()
+plt.subplot(122)
+plt.imshow(tst_marche)
+plt.colorbar()
+
 
 # # Partie test quadrants
 # quadr = quadrant_divide(pile_sofi_test)

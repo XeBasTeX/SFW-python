@@ -27,7 +27,7 @@ GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 SIGMA = 1e-1
 
-FOND = 2.0
+FOND = 1.0
 SIGMA_BRUITS = 3e-1
 TYPE_BRUITS = 'gauss'
 
@@ -82,7 +82,7 @@ if m_top.N > 0:
 
 test_obj = 'covar'
 test_acquis = R_y
-lambda_regul = 4e-5 # Param de relaxation pour SFW R_y
+lambda_regul = 4e-6 # Param de relaxation pour SFW R_y
 iteration = m_ax0.N
 
 
@@ -101,6 +101,7 @@ else:
 print(f'm_cbl : {m_cbl.N} Diracs')
 print(f'm_ax0 : {m_ax0.N} Diracs')
 print(fr'Dist W_1 des x de top : {dist_x_top:.3f}')
+print(f'σ_cbl : {sigma_cbl:.2e} contre {SIGMA_BRUITS}')
 if m_top.N > 0:
     certificat_V_cbl = covenant.etak(m_cbl, test_acquis, domain, lambda_regul,
                                      obj=test_obj)
@@ -113,7 +114,7 @@ if m_top.N > 0:
 
 
 
-#%% SFW sur SOFItool
+#%% Homotopy-SFW sur SOFItool
 
 from skimage import io
 
@@ -166,7 +167,7 @@ test_acquis = y_bar
 
 (m_top, nrj_top, lambda_top) = covenant.homotopy(test_acquis, domaine, 
                                                  SIGMA_BRUITS, obj=test_obj,
-                                                 nIter=5, c=1)
+                                                 nIter=10, c=1)
 if m_top.N == 0:
     dist_x_top = np.inf
 else:
@@ -186,15 +187,15 @@ if m_top.N > 0:
                           title='homotopie-covar-certificat-2d')
 
 
-#% SFW classique sur SOFItool
+#%% SFW classique sur SOFItool
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
 # lambda_regul = 2e-4  # Param de relaxation pour SFW R_y
 # lambda_regul2 = 1e-1  # Param de relaxation pour SFW y_moy
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
-lambda_regul = 3e-7 # Param de relaxation pour SFW R_y
-lambda_regul2 = 1e-4 # Param de relaxation pour SFW y_moy
+lambda_regul = 1e-9 # Param de relaxation pour SFW R_y
+lambda_regul2 = 1e-6 # Param de relaxation pour SFW y_moy
 
 # # # Pour Q_0(y_0) P_0(y_0)
 # lambda_regul = 1e-8 # Param de relaxation pour SFW R_y

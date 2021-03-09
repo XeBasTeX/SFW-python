@@ -45,8 +45,8 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g):
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
-    # normalis = 1
-    return expo/normalis
+    # normalis = 1 / normalis
+    return expo / normalis
 
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g):
@@ -673,13 +673,13 @@ def phiAdjoint(acquis, dom, obj='covar'):
         h_vec = gaussienne_2D(X_big, Y_big, sigma)
         convol_row = scipy.signal.convolve2d(acquis, h_vec, 'same').T/N_ech**2
         adj = np.diag(scipy.signal.convolve2d(convol_row, h_vec, 'same'))
-        eta = adj.reshape(N_ech, N_ech)/N_ech**2
+        eta = adj.reshape(N_ech, N_ech) / N_ech**2
         return eta
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
         sigma = dom.sigma
         out = gaussienne_2D(X_big, Y_big, sigma)
-        eta = scipy.signal.convolve2d(out, acquis, mode='valid')/N_ech**2
+        eta = scipy.signal.convolve2d(out, acquis, mode='valid') / N_ech**2
         return eta
     raise TypeError
 
@@ -724,13 +724,12 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
 
     """
-    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
+    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
 
 def pile_aquisition(m, dom, bru, T_ech):
-    r"""
-    Construit une pile d'acquisition à partir d'une mesure. Correspond à 
+    r"""Construit une pile d'acquisition à partir d'une mesure. Correspond à 
     l'opérateur $\vartheta(\mu)$ 
 
     Parameters
@@ -763,8 +762,7 @@ def pile_aquisition(m, dom, bru, T_ech):
 
 
 def covariance_pile(stack, stack_mean):
-    """
-    Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne
+    """Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne
 
     Parameters
     ----------
@@ -801,8 +799,7 @@ def covariance_pile(stack, stack_mean):
 # Le fameux algo de Sliding Frank Wolfe
 def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         obj='covar', printInline=True):
-    """
-    Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
+    """Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
     solution du BLASSO [1].
 
     Si l'objectif est la covariance :
@@ -1408,7 +1405,7 @@ def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None,
                                       method='L-BFGS-B',
                                       jac=grad_lasso_double,
                                       bounds=bounds_bfgs,
-                                      options={'disp': __deboggage__})
+                                      options={'disp': True})
         a_k_plus = (tes.x[:int(len(tes.x)/3)])
         x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
 
