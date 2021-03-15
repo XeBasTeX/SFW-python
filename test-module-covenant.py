@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import covenant
 
 
-# np.random.seed(90)
+np.random.seed(95)
 
 N_ECH = 2**4  # Taux d'échantillonnage
 X_GAUCHE = 0
@@ -27,16 +27,16 @@ GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 SIGMA = 1e-1
 
-FOND = 1.0
+FOND = 2.0
 SIGMA_BRUITS = 3e-1
 TYPE_BRUITS = 'gauss'
 
 
 domain = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y, SIGMA)
 bruits_t = covenant.Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
-m_ax0 = covenant.mesure_aleatoire(9, domain)
+m_ax0 = covenant.mesure_aleatoire(9 , domain)
 
-T_ECH = 100
+T_ECH = 50
 pile = covenant.pile_aquisition(m_ax0, domain, bruits_t, T_ECH)
 y_bar = np.mean(pile, axis=0)
 R_y = covenant.covariance_pile(pile, y_bar)
@@ -51,9 +51,12 @@ R_x = m_ax0.covariance_kernel(domain)
 test_obj = 'covar'
 test_acquis = R_y
 
+SIGMA_TARGET = 1.5 * SIGMA_BRUITS
+
 (m_top, nrj_top, lambda_top) = covenant.homotopy(test_acquis, domain, 
-                                                 SIGMA_BRUITS, obj=test_obj,
-                                                 nIter=2*m_ax0.N, c=1)
+                                                 SIGMA_TARGET, 
+                                                 obj=test_obj,
+                                                 nIter=20, c=1)
 
 (m_cov, nrj_cov, mes_cov) = covenant.SFW(test_acquis, domain, regul=1e-5,
                                          nIter=m_ax0.N, mesParIter=True,

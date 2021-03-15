@@ -23,7 +23,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
 
-def gaussienne_2D(X_domain, Y_domain, sigma_g):
+def gaussienne_2D(X_domain, Y_domain, sigma_g, normalis=None):
     """
     Gaussienne en 2D centrée en 0 normalisée.
 
@@ -44,12 +44,14 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g):
     """
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
-    normalis = sigma_g * (2*np.pi)
-    # normalis = 1 / normalis
-    return expo / normalis
+    if normalis == None:
+        normalis = (sigma_g * (2*np.pi))
+        normalis = 1 / normalis
+    sum_normalis = np.sum(expo * normalis)
+    return expo * normalis #/ sum_normalis
 
 
-def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g):
+def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
     """
     Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la 
     chain rule derivation.
@@ -73,14 +75,13 @@ def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g):
         :math:`\partial_1 h` sur :math:`\mathcal{X}`.
 
     """
-    expo = np.exp(-(np.power(X_domain, 2) +
-                    np.power(Y_domain, 2))/(2*sigma_g**2))
-    normalis = sigma_g**3 * (2*np.pi)
+    expo = gaussienne_2D(X_domain, Y_domain, sigma_g, normalis)
+    cst_deriv = sigma_g**2
     carre = - X_deriv
-    return carre * expo / normalis
+    return carre * expo / cst_deriv
 
 
-def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g):
+def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
     """
     Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la 
     chain rule derivation.
@@ -104,11 +105,10 @@ def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g):
         :math:`\partial_2 h` sur :math:`\mathcal{X}`.
 
     """
-    expo = np.exp(-(np.power(X_domain, 2) +
-                    np.power(Y_domain, 2))/(2*sigma_g**2))
-    normalis = sigma_g**3 * (2*np.pi)
+    expo = gaussienne_2D(X_domain, Y_domain, sigma_g, normalis)
+    cst_deriv = sigma_g**2
     carre = - Y_deriv
-    return carre * expo / normalis
+    return carre * expo / cst_deriv
 
 
 def ideal_lowpass(carre, f_c):
@@ -724,7 +724,7 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
 
     """
-    eta = 1/regul*phiAdjointSimps(acquis - phi(mesure, dom, obj), dom, obj)
+    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
 
 
@@ -1097,7 +1097,7 @@ def partial_wasserstein_metric(mes, m_zer):
     return log['partial_w_dist']
 
 
-def homotopy(acquis, dom, sigma_target, c=1, nIter=10, obj='covar'):
+def homotopy(acquis, dom, sigma_target, c=1, nIter=100, obj='covar'):
     """
     Algorithme d'homotopie [1,2] pour reconstuire la mesure à l'origine de 
     `acquis`, avec seulement un écart-type cible `sigma_target` comme données. 
@@ -1151,7 +1151,8 @@ def homotopy(acquis, dom, sigma_target, c=1, nIter=10, obj='covar'):
         (mesure_k, nrj_k) = SFW(acquis, dom, regul=lambda_k, nIter=nIter,
                                 mes_init=mesure_k, obj=obj, printInline=False)
         residual = phi(mesure_k, dom, obj=obj) - acquis
-        sigma_k = np.std(residual)
+        # sigma_k = np.std(residual)
+        sigma_k = np.linalg.norm(residual) / np.sqrt(acquis.shape[0])
         print(f"* λ_{k} = {lambda_k:.2e} pour {mesure_k.N} ẟ-pics" +
               f" à σ = {sigma_k:.2e}")
         if sigma_k < sigma_target:
@@ -1493,6 +1494,79 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
 
         plt.subplot(224)
         plt.plot(nrj, 'o--', color='black', linewidth=2.5)
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+        plt.xlabel('Itération', fontsize=18)
+        plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
+        if obj == 'covar':
+            plt.title(r'BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'BLASSO energy $\mathcal{P}_\lambda(\overline{y})$',
+                      fontsize=20)
+        plt.grid()
+
+        if title is None:
+            title = 'fig/covar-certificat-2d.pdf'
+        elif isinstance(title, str):
+            title = 'fig/' + title + '.pdf'
+        else:
+            raise TypeError("You ought to give a str type name for the plot")
+        if saveFig:
+            plt.savefig(title, format='pdf', dpi=1000,
+                        bbox_inches='tight', pad_inches=0.03)
+
+
+def plot_experimental(m, dom, acquis, nrj, certif, title=None,
+                      saveFig=False, obj='covar'):
+    '''Affiche tous les graphes importants pour la mesure m'''
+    if m.a.size > 0:
+        fig = plt.figure(figsize=(15, 12))
+        # fig = plt.figure(figsize=(13,10))
+        # type_de_bruits = bruits.type
+        # niveau_bruits = bruits.niveau
+        # fig.suptitle(fr'Reconstruction en bruits {type_de_bruits} ' +
+        #              fr'pour $\lambda = {lambda_regul:.0e}$ ' +
+        #              fr'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
+        fig.suptitle(f'Reconstruction {obj}', fontsize=22)
+
+        plt.subplot(221)
+        cont1 = plt.contourf(dom.X, dom.Y, acquis, 100, cmap='gray')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
+        plt.colorbar()
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+',
+                    label='Recovered spikes')
+        plt.legend()
+
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
+
+        plt.subplot(222)
+        cont2 = plt.contourf(dom.X, dom.Y, m.kernel(dom), 100, cmap='gray')
+        for c in cont2.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        if obj == 'covar':
+            plt.title(r'Reconstruction $m_{M,x}$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'Reconstruction $m_{a,x}$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        plt.colorbar()
+
+        plt.subplot(223)
+        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='gray')
+        for c in cont3.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Certificate $\eta_V$', fontsize=20)
+        plt.colorbar()
+
+        plt.subplot(224)
+        plt.plot(nrj, 'o--', color='black', linewidth=2.5)
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
         plt.xlabel('Itération', fontsize=18)
         plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
         if obj == 'covar':
