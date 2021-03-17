@@ -48,7 +48,7 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g, normalis=None):
         normalis = (sigma_g * (2*np.pi))
         normalis = 1 / normalis
     sum_normalis = np.sum(expo * normalis)
-    return expo * normalis #/ sum_normalis
+    return expo * normalis  # / sum_normalis
 
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
@@ -685,10 +685,10 @@ def phiAdjoint(acquis, dom, obj='covar'):
 
 
 def etak(mesure, acquis, dom, regul, obj='covar'):
-    r"""Certificat dual :math:`\eta` associé à la mesure :math:`m`. Ce 
-    certificat permet de donner une approximation (sur la grille) de la 
-    position du Dirac de plus forte intensité qui engendrerait acquis par
-    le noyau `obj`.
+    r"""Certificat dual :math:`\eta_\lambda` associé à la mesure 
+    :math:`m_\lambda`. Ce certificat permet de donner une approximation 
+    (sur la grille) de la  position du Dirac de plus forte intensité du 
+    résidu.
 
     Parameters
     ----------
@@ -1166,7 +1166,7 @@ def homotopy(acquis, dom, sigma_target, c=1, nIter=100, obj='covar'):
     return(mesure_k, nrj_k, lambda_k)
 
 
-def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, 
+def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None,
                     mesParIter=False, obj='covar', printInline=True):
     r"""
     Algorithme de Sliding Frank-Wolfe [1] pour la reconstruction de mesures
@@ -1426,7 +1426,7 @@ def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None,
             print(f'* Énergie : {nrj_vecteur[k]:.3f}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
-            
+
         # Update noise level
         sigma_b = np.linalg.norm(acquis - phi(mesure_k, dom, obj)) / sq_n
 
@@ -1480,7 +1480,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
                       f'à N = {m.N}', fontsize=20)
         elif obj == 'acquis':
             plt.title(r'Reconstruction $m_{a,x}$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'with N = {m.N}', fontsize=20)
         plt.colorbar()
 
         plt.subplot(223)
@@ -1489,12 +1489,12 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title(r'Certificate $\eta_V$', fontsize=20)
+        plt.title(r'Certificate $\eta_\lambda$', fontsize=20)
         plt.colorbar()
 
         plt.subplot(224)
         plt.plot(nrj, 'o--', color='black', linewidth=2.5)
-        plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
         plt.xlabel('Itération', fontsize=18)
         plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
         if obj == 'covar':
@@ -1533,7 +1533,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, title=None,
         for c in cont1.collections:
             c.set_edgecolor("face")
         plt.colorbar()
-        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+',
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
                     label='Recovered spikes')
         plt.legend()
 
@@ -1561,12 +1561,12 @@ def plot_experimental(m, dom, acquis, nrj, certif, title=None,
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title(r'Certificate $\eta_V$', fontsize=20)
+        plt.title(r'Certificate $\eta_\lambda$', fontsize=20)
         plt.colorbar()
 
         plt.subplot(224)
         plt.plot(nrj, 'o--', color='black', linewidth=2.5)
-        plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
         plt.xlabel('Itération', fontsize=18)
         plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
         if obj == 'covar':
@@ -1577,7 +1577,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, title=None,
         plt.grid()
 
         if title is None:
-            title = 'fig/covar-certificat-2d.pdf'
+            title = 'fig/experimentals.pdf'
         elif isinstance(title, str):
             title = 'fig/' + title + '.pdf'
         else:
@@ -1673,6 +1673,69 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
                      cmap='seismic')
         ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
                     s=4*dom.N_ech, label='GT spikes')
+        ax2.scatter(m_list[k].x[:, 0], m_list[k].x[:, 1], marker='+',
+                    s=8*dom.N_ech, c='g', label='Recovered spikes')
+        ax2.set_xlabel('X', fontsize=25)
+        ax2.set_ylabel('Y', fontsize=25)
+        ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
+        ax2.legend(loc=1, fontsize=20)
+        plt.tight_layout()
+
+    anim = FuncAnimation(fig, animate, interval=1000, frames=len(m_list)+3,
+                         blit=False)
+
+    plt.draw()
+
+    if title is None:
+        title = 'fig/anim-sfw-covar-2d'
+    elif isinstance(title, str):
+        title = 'fig/' + title
+    else:
+        raise TypeError("You ought to give a str type name for the video file")
+
+    if video == "mp4":
+        anim.save(title + '.mp4')
+    elif video == "gif":
+        anim.save(title + '.gif')
+    else:
+        raise ValueError('Unknown video format')
+    return fig
+
+
+def gif_experimental(acquis, m_list, dom, video='gif', title=None):
+    '''Montre comment la fonction SFW ajoute ses Dirac'''
+    fig = plt.figure(figsize=(20, 10))
+
+    ax1 = fig.add_subplot(121)
+    ax1.set_aspect('equal', adjustable='box')
+    cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont, cax=cax)
+    ax1.set_xlabel('X', fontsize=25)
+    ax1.set_ylabel('Y', fontsize=25)
+    ax1.set_title(r'Moyenne $\overline{y}$', fontsize=35)
+
+    ax2 = fig.add_subplot(122)
+    # ax2.set(xlim=(0, 1), ylim=(0, 1))
+    cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    divider = make_axes_locatable(ax2)
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont_sfw, cax=cax)
+    ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    ax2.scatter(m_list[0].x[:, 0], m_list[0].x[:, 1], marker='+',
+                s=2*dom.N_ech, c='g', label='Recovered spikes')
+    ax2.legend(loc=1, fontsize=20)
+    plt.tight_layout()
+
+    def animate(k):
+        if k >= len(m_list):
+            # On fige l'animation pour faire une pause à la pause
+            return
+        ax2.clear()
+        ax2.set_aspect('equal', adjustable='box')
+        ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
+                     cmap='seismic')
         ax2.scatter(m_list[k].x[:, 0], m_list[k].x[:, 1], marker='+',
                     s=8*dom.N_ech, c='g', label='Recovered spikes')
         ax2.set_xlabel('X', fontsize=25)

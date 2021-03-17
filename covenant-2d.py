@@ -41,16 +41,19 @@ X, Y = np.meshgrid(GRID, GRID)
 
 def gaussienne_1D(line, sigma_g=sigma):
     '''Gaussienne 1D centrée en 0'''
+    expo = np.exp(-np.power(line,2)/(2*sigma_g**2))
     normalis = sigma_g * np.sqrt(2*np.pi)
-    return np.exp(-np.power(line,2)/(2*sigma_g**2)) / normalis
+    sum_normalis = np.sum(expo / normalis)
+    return expo / normalis  / sum_normalis
 
 
 def gaussienne(carre, sigma_g=sigma):
     '''Gaussienne centrée en 0'''
     expo = np.exp(-np.power(carre, 2)/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
-    # normalis = 1
-    return expo / normalis
+    normalis = 1 / normalis
+    sum_normalis = np.sum(expo * normalis)
+    return expo / normalis / sum_normalis
 
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
@@ -58,8 +61,9 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
+    sum_normalis = np.sum(expo * normalis)
     # normalis = 1
-    return expo / normalis
+    return expo / normalis / sum_normalis
 
 
 # def gaussienne_eval(params):
@@ -74,21 +78,19 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g=sigma):
     '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
     rule derivation'''
-    expo = np.exp(-(np.power(X_domain, 2) +
-                    np.power(Y_domain, 2))/(2*sigma_g**2))
-    normalis = sigma_g**3 * (2*np.pi)
+    expo = gaussienne_2D(X_domain, Y_domain, sigma_g=sigma)
+    normalis = 1 / sigma_g**2
     carre = - X_deriv
-    return carre * expo / normalis
+    return carre * expo * normalis
 
 
 def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g=sigma):
     '''Gaussienne centrée en 0. Attention, ne prend pas en compte la chain 
     rule derivation'''
-    expo = np.exp(-(np.power(X_domain, 2) +
-                    np.power(Y_domain, 2))/(2*sigma_g**2))
-    normalis = sigma_g**3 * (2*np.pi)
+    expo = gaussienne_2D(X_domain, Y_domain, sigma_g=sigma)
+    normalis = 1 / sigma_g**2
     carre = - Y_deriv
-    return carre * expo / normalis
+    return carre * expo * normalis
 
 
 # def grad_gaussienne_2D(params):
@@ -911,7 +913,7 @@ R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(domain.X, domain.Y)
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-lambda_regul = 1e-5 # Param de relaxation pour SFW R_y
+lambda_regul = 1e-7 # Param de relaxation pour SFW R_y
 lambda_regul2 = 3e-3 # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
@@ -1080,7 +1082,7 @@ def lasso_double(params):
     x_p = params[int(len(params)/3):]
     x_p = x_p.reshape((len(a_p), 2))
     residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
-    attache = 0.5*np.linalg.norm(residual)**2/N_grille
+    attache = 0.5 * np.linalg.norm(residual)**2 / N_grille
     parcimonie = regul*np.linalg.norm(a_p, 1)
     return attache + parcimonie
 
@@ -1115,7 +1117,7 @@ def grad_lasso_double(params):
         for i in range(N):
             integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
                                                   dom.Y - x_p[i, 1]))
-            partial_a[i] = regul - integ/N_grille
+            partial_a[i] = regul - integ / N_grille
 
             grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                 dom.Y - x_p[i, 1],
