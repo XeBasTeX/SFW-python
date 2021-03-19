@@ -9,6 +9,7 @@ and reconstructing those measures w.r.t to a provided acquistion
 
 __team__ = 'Morpheme'
 __deboggage__ = False
+__normalis_PSF__ = False
 
 
 import numpy as np
@@ -23,9 +24,43 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
 
-def gaussienne_2D(X_domain, Y_domain, sigma_g, normalis=None):
+def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
     """
     Gaussienne en 2D centrée en 0 normalisée.
+
+    Parameters
+    ----------
+    X_domain : ndarray
+        Grille des coordonnées X (issue de meshgrid).
+    Y_domain : ndarray
+        Grille des coordonnées Y (issue de meshgrid).
+    sigma_g : double
+        :math:`\sigma` paramètre de la gaussienne.
+    undivide : str
+        Pour savoir si on normalise par les composantes de la PSF.
+        The default is True.
+
+    Returns
+    -------
+    ndarray
+        Vecteur discrétisant la gaussienne :math:`h` sur :math:`\mathcal{X}`.
+
+    """
+    expo = np.exp(-(np.power(X_domain, 2) + np.power(Y_domain, 2)) 
+                  / (2*sigma_g**2))
+    normalis = (sigma_g * (2*np.pi))
+    normalis = 1 / normalis
+    if undivide == True:
+        sum_normalis = np.sum(expo * normalis)
+        return expo * normalis / sum_normalis
+    else:
+        return expo * normalis
+
+
+def sum_normalis(X_domain, Y_domain, sigma_g):
+    """
+    Renvoie la somme de toutes les composantes de la PSF discrète, pour que 
+    l'on puisse normaliser la PSF, de sorte à avoir np.sum(PSF) = 1
 
     Parameters
     ----------
@@ -38,17 +73,15 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g, normalis=None):
 
     Returns
     -------
-    ndarray
-        Vecteur discrétisant la gaussienne :math:`h` sur :math:`\mathcal{X}`.
+    double
+        Somme de toutes les composantes de la PSF
 
     """
     expo = np.exp(-(np.power(X_domain, 2) +
-                    np.power(Y_domain, 2))/(2*sigma_g**2))
-    if normalis == None:
-        normalis = (sigma_g * (2*np.pi))
-        normalis = 1 / normalis
-    sum_normalis = np.sum(expo * normalis)
-    return expo * normalis  # / sum_normalis
+                np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g * (2*np.pi)
+    normalis = 1 / normalis
+    return np.sum(normalis * expo)
 
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
@@ -117,8 +150,10 @@ def ideal_lowpass(carre, f_c):
 
 
 class Domain2D:
-    def __init__(self, gauche, droit, ech, grille, X_domain, Y_domain,
-                 sigma_psf):
+    def __init__(self, gauche, droit, ech, sigma_psf):
+        '''Hierher ne marche que pour des grilles carrées'''
+        grille = np.linspace(gauche, droit, ech)
+        X_domain, Y_domain = np.meshgrid(grille, grille)
         self.x_gauche = gauche
         self.x_droit = droit
         self.N_ech = ech
@@ -159,6 +194,10 @@ class Domain2D:
                                2*self.N_ech - 1)
         X_big, Y_big = np.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
+
+    def super_resolve(self, q=4):
+        super_N_ech = q * self.N_ech
+        return Domain2D(self.x_gauche, self.x_droit, super_N_ech, self.sigma)
 
 
 class Bruits:
@@ -256,6 +295,8 @@ class Mesure2D:
                                              Y_domain - x[i, 1], sigma)
             return acquis
         if noyau == 'laplace':
+            raise TypeError("Pas implémenté.")
+        if noyau == 'fourier':
             raise TypeError("Pas implémenté.")
         raise NameError("Unknown kernel.")
 
@@ -365,8 +406,7 @@ class Mesure2D:
         except ValueError:
             return 0
 
-    def energie(self, dom, acquis, regul, obj='covar',
-                bruits='gauss'):
+    def energie(self, dom, acquis, regul, obj='covar', bruits='gauss'):
         """
         Énergie de la mesure pour le problème Covenant 
         :math:`(\mathcal{Q}_\lambda (y))` ou BLASSO sur
@@ -404,24 +444,24 @@ class Mesure2D:
             normalis = acquis.size
             if obj == 'covar':
                 R_nrj = self.covariance_kernel(dom)
-                attache = 0.5*np.linalg.norm(acquis - R_nrj)**2/normalis
+                attache = 0.5 * np.linalg.norm(acquis - R_nrj)**2 / normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
             if obj == 'acquis':
                 simul = self.kernel(dom)
-                attache = 0.5*np.linalg.norm(acquis - simul)**2/normalis
+                attache = 0.5 * np.linalg.norm(acquis - simul)**2 / normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
         elif bruits in ('gauss', 'unif'):
             normalis = acquis.size
             if obj == 'covar':
                 R_nrj = self.covariance_kernel(dom)
-                attache = 0.5*np.linalg.norm(acquis - R_nrj)**2/normalis
+                attache = 0.5 * np.linalg.norm(acquis - R_nrj)**2 / normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
             if obj == 'acquis':
                 simul = self.kernel(dom)
-                attache = 0.5*np.linalg.norm(acquis - simul)**2/normalis
+                attache = 0.5 * np.linalg.norm(acquis - simul)**2 / normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
             raise NameError("Unknown kernel")
@@ -670,7 +710,11 @@ def phiAdjoint(acquis, dom, obj='covar'):
     if obj == 'covar':
         (X_big, Y_big) = dom.big()
         sigma = dom.sigma
-        h_vec = gaussienne_2D(X_big, Y_big, sigma)
+        if __normalis_PSF__:
+            normalis = sum_normalis(dom.X, dom.Y, sigma)
+        else:
+            normalis = 1
+        h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=False) / normalis
         convol_row = scipy.signal.convolve2d(acquis, h_vec, 'same').T/N_ech**2
         adj = np.diag(scipy.signal.convolve2d(convol_row, h_vec, 'same'))
         eta = adj.reshape(N_ech, N_ech) / N_ech**2
@@ -678,7 +722,11 @@ def phiAdjoint(acquis, dom, obj='covar'):
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
         sigma = dom.sigma
-        out = gaussienne_2D(X_big, Y_big, sigma)
+        if __normalis_PSF__:
+            normalis = sum_normalis(dom.X, dom.Y, sigma)
+        else:
+            normalis = 1
+        out = gaussienne_2D(X_big, Y_big, sigma, undivide=False) / normalis
         eta = scipy.signal.convolve2d(out, acquis, mode='valid') / N_ech**2
         return eta
     raise TypeError
@@ -1023,9 +1071,9 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
         bounds_bfgs = a_part + x_part
         tes = scipy.optimize.minimize(lasso_double, initial_guess,
-                                      method='L-BFGS-B',
-                                      jac=grad_lasso_double,
-                                      bounds=bounds_bfgs,
+                                       method='L-BFGS-B',
+                                       jac=grad_lasso_double,
+                                       bounds=bounds_bfgs,
                                       options={'disp': True})
         a_k_plus = (tes.x[:int(len(tes.x)/3)])
         x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
@@ -1438,7 +1486,7 @@ def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None,
     return(mesure_k, sigma_b, nrj_vecteur)
 
 
-def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
+def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
                  saveFig=False, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
     if m.a.size > 0:
@@ -1470,16 +1518,18 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
         plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
 
         plt.subplot(222)
-        cont2 = plt.contourf(dom.X, dom.Y, m.kernel(dom), 100, cmap='gray')
+        super_dom = dom.super_resolve(q)
+        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+                             100, cmap='gray')
         for c in cont2.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
-            plt.title(r'Reconstruction $m_{M,x}$ ' +
+            plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
                       f'à N = {m.N}', fontsize=20)
         elif obj == 'acquis':
-            plt.title(r'Reconstruction $m_{a,x}$ ' +
+            plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
                       f'with N = {m.N}', fontsize=20)
         plt.colorbar()
 
@@ -1515,7 +1565,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, title=None,
                         bbox_inches='tight', pad_inches=0.03)
 
 
-def plot_experimental(m, dom, acquis, nrj, certif, title=None,
+def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
                       saveFig=False, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
     if m.a.size > 0:
@@ -1542,16 +1592,18 @@ def plot_experimental(m, dom, acquis, nrj, certif, title=None,
         plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
 
         plt.subplot(222)
-        cont2 = plt.contourf(dom.X, dom.Y, m.kernel(dom), 100, cmap='gray')
+        super_dom = dom.super_resolve(q)
+        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+                             100, cmap='gray')
         for c in cont2.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
-            plt.title(r'Reconstruction $m_{M,x}$ ' +
+            plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
                       f'à N = {m.N}', fontsize=20)
         elif obj == 'acquis':
-            plt.title(r'Reconstruction $m_{a,x}$ ' +
+            plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
                       f'à N = {m.N}', fontsize=20)
         plt.colorbar()
 
@@ -1620,9 +1672,9 @@ def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
     plt.draw()
 
     if title is None:
-        title = 'fig/anim-pile-2d'
+        title = 'fig/anim/anim-pile-2d'
     elif isinstance(title, str):
-        title = 'fig/' + title
+        title = 'fig/anim/' + title
     else:
         raise TypeError("You ought to give a str type name for the video file")
 
@@ -1635,7 +1687,7 @@ def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
     return fig
 
 
-def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
+def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif', title=None):
     '''Montre comment la fonction SFW ajoute ses Dirac'''
     fig = plt.figure(figsize=(20, 10))
 
@@ -1681,15 +1733,15 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
         ax2.legend(loc=1, fontsize=20)
         plt.tight_layout()
 
-    anim = FuncAnimation(fig, animate, interval=1000, frames=len(m_list)+3,
+    anim = FuncAnimation(fig, animate, interval=step, frames=len(m_list)+3,
                          blit=False)
 
     plt.draw()
 
     if title is None:
-        title = 'fig/anim-sfw-covar-2d'
+        title = 'fig/anim/anim-sfw-covar-2d'
     elif isinstance(title, str):
-        title = 'fig/' + title
+        title = 'fig/anim/' + title
     else:
         raise TypeError("You ought to give a str type name for the video file")
 
@@ -1702,30 +1754,36 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     return fig
 
 
-def gif_experimental(acquis, m_list, dom, video='gif', title=None):
+def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif', 
+                     title=None):
     '''Montre comment la fonction SFW ajoute ses Dirac'''
     fig = plt.figure(figsize=(20, 10))
 
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
-    cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    # cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    cont = ax1.imshow(acquis, cmap='seismic')
     divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
     ax1.set_xlabel('X', fontsize=25)
     ax1.set_ylabel('Y', fontsize=25)
-    ax1.set_title(r'Moyenne $\overline{y}$', fontsize=35)
+    ax1.set_title(r'Temporal mean $\overline{y}$', fontsize=35)
 
     ax2 = fig.add_subplot(122)
-    # ax2.set(xlim=(0, 1), ylim=(0, 1))
-    cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    # cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    cont_sfw = ax2.imshow(acquis, cmap='seismic')
     divider = make_axes_locatable(ax2)
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
-    ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    ax2.scatter(m_list[0].x[:, 0], m_list[0].x[:, 1], marker='+',
-                s=2*dom.N_ech, c='g', label='Recovered spikes')
-    ax2.legend(loc=1, fontsize=20)
+    # ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    ax2.imshow(acquis, cmap='seismic')
+    if cross:
+        taille = dom.N_ech
+        ax2.scatter(taille*m_list[0].x[:, 0], taille*m_list[0].x[:, 1], 
+                    marker='+', s=2*dom.N_ech, c='g',
+                    label='Recovered spikes')
+        ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
 
     def animate(k):
@@ -1734,25 +1792,28 @@ def gif_experimental(acquis, m_list, dom, video='gif', title=None):
             return
         ax2.clear()
         ax2.set_aspect('equal', adjustable='box')
-        ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
-                     cmap='seismic')
-        ax2.scatter(m_list[k].x[:, 0], m_list[k].x[:, 1], marker='+',
-                    s=8*dom.N_ech, c='g', label='Recovered spikes')
+        # ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
+        #              cmap='seismic')
+        ax2.imshow(m_list[k].kernel(dom), cmap='seismic')
+        if cross:
+            ax2.scatter(taille*m_list[k].x[:, 0], taille*m_list[k].x[:, 1], 
+                        marker='+', s=2*dom.N_ech, c='g', 
+                        label='Recovered spikes')
+            ax2.legend(loc=1, fontsize=20)
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
-        ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
-        ax2.legend(loc=1, fontsize=20)
+        ax2.set_title(f'Reconstruction at iterate {k}', fontsize=35)
         plt.tight_layout()
 
-    anim = FuncAnimation(fig, animate, interval=1000, frames=len(m_list)+3,
+    anim = FuncAnimation(fig, animate, interval=step, frames=len(m_list)+3,
                          blit=False)
 
     plt.draw()
 
     if title is None:
-        title = 'fig/anim-sfw-covar-2d'
+        title = 'fig/anim/anim-sfw-covar-2d'
     elif isinstance(title, str):
-        title = 'fig/' + title
+        title = 'fig/anim/' + title
     else:
         raise TypeError("You ought to give a str type name for the video file")
 
@@ -1763,3 +1824,15 @@ def gif_experimental(acquis, m_list, dom, video='gif', title=None):
     else:
         raise ValueError('Unknown video format')
     return fig
+
+
+def compare_covariance(m, covariance, dom):
+    fig = plt.figure(figsize=(12, 4))
+    ax1 = fig.add_subplot(121)
+    lambada = ax1.imshow(m.covariance_kernel(dom))
+    fig.colorbar(lambada)
+    ax1.set_title(r'$\Lambda(m_{M,x})$', fontsize=40)
+    ax2 = fig.add_subplot(122)
+    ax2.imshow(covariance)
+    fig.colorbar(lambada)
+    ax2.set_title(r'$R_y$', fontsize=40)

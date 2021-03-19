@@ -26,25 +26,26 @@ import matplotlib.pyplot as plt
 
 
 np.random.seed(80)
-sigma = 1e-1 # écart-type de la PSF
+sigma = 1e-1  # écart-type de la PSF
 
 type_bruits = 'gauss'
-niveau_bruits = 3e-1 # sigma du bruit
+niveau_bruits = 7e-1  # sigma du bruit
 b_fond = 5.0
 
-N_ECH = 2**4 # Taux d'échantillonnage
+N_ECH = 2**4  # Taux d'échantillonnage
 X_GAUCHE = 0
-X_DROIT = 1 
+X_DROIT = 1
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 
 
 def gaussienne_1D(line, sigma_g=sigma):
     '''Gaussienne 1D centrée en 0'''
-    expo = np.exp(-np.power(line,2)/(2*sigma_g**2))
+    expo = np.exp(-np.power(line, 2)/(2*sigma_g**2))
     normalis = sigma_g * np.sqrt(2*np.pi)
+    normalis = 1 / normalis
     sum_normalis = np.sum(expo / normalis)
-    return expo / normalis  / sum_normalis
+    return expo * normalis #/ sum_normalis
 
 
 def gaussienne(carre, sigma_g=sigma):
@@ -53,17 +54,28 @@ def gaussienne(carre, sigma_g=sigma):
     normalis = sigma_g * (2*np.pi)
     normalis = 1 / normalis
     sum_normalis = np.sum(expo * normalis)
-    return expo / normalis / sum_normalis
+    return normalis * expo #/ sum_normalis
 
 
-def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma):
+def sum_normalis(X_domain, Y_domain, sigma_g=sigma):
+    expo = np.exp(-(np.power(X_domain, 2) +
+                np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g * (2*np.pi)
+    normalis = 1 / normalis
+    return np.sum(expo * normalis)
+
+
+def gaussienne_2D(X_domain, Y_domain, sigma_g=sigma, undivide=True):
     '''Gaussienne centrée en 0'''
     expo = np.exp(-(np.power(X_domain, 2) +
                     np.power(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
-    sum_normalis = np.sum(expo * normalis)
-    # normalis = 1
-    return expo / normalis / sum_normalis
+    normalis = 1 / normalis
+    if undivide == True:
+        return normalis * expo
+    else:
+        sum_normalis = np.sum(expo * normalis)
+        return normalis * expo / sum_normalis
 
 
 # def gaussienne_eval(params):
@@ -100,7 +112,7 @@ def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g=sigma):
 #     sigma_g = sigma
 #     expo = np.exp(-(x_pos**2 + y_pos**2)/(2*sigma_g**2))
 #     normalis = sigma_g**3 * (2*np.pi)
-#     eval_grad = np.array([-x_pos*normalis*expo, -y_pos*normalis*expo]) 
+#     eval_grad = np.array([-x_pos*normalis*expo, -y_pos*normalis*expo])
 #     return eval_grad
 
 
@@ -201,9 +213,10 @@ class Mesure2D:
         acquis = X_domain*0
         if noyau == 'gaussienne':
             for i in range(0, N):
-                D = (np.sqrt(np.power(X_domain - x[i, 0], 2)
-                             + np.power(Y_domain - x[i, 1], 2)))
-                acquis += a[i]*gaussienne(D)
+                # D = (np.sqrt(np.power(X_domain - x[i, 0], 2)
+                #              + np.power(Y_domain - x[i, 1], 2)))
+                acquis += a[i]*gaussienne_2D(X_domain - x[i, 0],
+                                             Y_domain - x[i, 1])
             return acquis
         if noyau == 'laplace':
             raise TypeError("Pas implémenté")
@@ -218,10 +231,10 @@ class Mesure2D:
         taille_y = np.size(Y_domain)
         acquis = np.zeros((taille_x, taille_y))
         for i in range(0, N):
-            D = (np.sqrt(np.power(X_domain - x[i, 0], 2) +
-                         np.power(Y_domain - x[i, 1], 2)))
-            noyau_u = gaussienne(D)
-            noyau_v = gaussienne(D)
+            # D = (np.sqrt(np.power(X_domain - x[i, 0], 2) +
+            #              np.power(Y_domain - x[i, 1], 2)))
+            noyau_u = gaussienne_2D(X_domain - x[i, 0], Y_domain - x[i, 1])
+            noyau_v = gaussienne_2D(X_domain - x[i, 0], Y_domain - x[i, 1])
             acquis += a[i]*np.outer(noyau_u, noyau_v)
         return acquis
 
@@ -440,15 +453,17 @@ def phiAdjoint(acquis, dom, obj='covar'):
     eta = np.zeros(np.shape(dom.X))
     if obj == 'covar':
         (X_big, Y_big) = dom.big()
-        h_vec = gaussienne_2D(X_big, Y_big)
+        normalis = sum_normalis(dom.X, dom.Y)
+        h_vec = gaussienne_2D(X_big, Y_big) / normalis
         adj = np.diag(scipy.signal.convolve2d(acquis, h_vec, 'same'))/N_ech**2
         adj = np.roll(adj, -1)
         eta = adj.reshape(N_ech, N_ech)/N_ech**2
         return eta
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
-        out = gaussienne_2D(X_big, Y_big)
-        eta = scipy.signal.convolve2d(acquis, out, mode='valid')/N_ech**2
+        normalis = sum_normalis(dom.X, dom.Y)
+        out = gaussienne_2D(X_big, Y_big) / normalis
+        eta = scipy.signal.convolve2d(acquis, out, mode='valid') / N_ech**2
         return eta
     raise TypeError
 
@@ -575,8 +590,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             x_p = params[int(len(params)/3):]
             # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
-            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom,
-                                                              obj))**2/N_grille
+            residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+            attache = 0.5*np.linalg.norm(residual)**2/N_grille
             parcimonie = regul*np.linalg.norm(a_p, 1)
             return attache + parcimonie
 
@@ -598,12 +613,14 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
                                                        dom.Y - x_p[i, 1],
                                                        dom.X - x_p[i, 0])
                     cov_der_x = np.outer(gauss_der_x, gauss)
-                    partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual) / (N_grille)
+                    partial_x[2*i] = 2*a_p[i] * \
+                        np.sum(cov_der_x*residual) / (N_grille)
                     gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.Y - x_p[i, 1])
                     cov_der_y = np.outer(gauss_der_y, gauss)
-                    partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual) / (N_grille)
+                    partial_x[2*i+1] = 2*a_p[i] * \
+                        np.sum(cov_der_y*residual) / (N_grille)
 
                 return(partial_a + partial_x)
             elif obj == 'acquis':
@@ -751,7 +768,7 @@ def plot_results(m, dom, nrj, certif, title=None, obj='covar'):
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title(r'Certificate $\eta_V$', fontsize=20)
+        plt.title(r'Certificate $\eta_\lambda$', fontsize=20)
         plt.colorbar()
 
         plt.subplot(224)
@@ -831,7 +848,7 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
     cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    divider = make_axes_locatable(ax1) # pour paramétrer colorbar
+    divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
     ax1.set_xlabel('X', fontsize=25)
@@ -845,10 +862,10 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
     ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-               s=dom.N_ech, label='Hidden spikes')
-    ax2.scatter(m_list[0].x[:,0], m_list[0].x[:,1], marker='+',
-                      s=2*dom.N_ech, c='g', label='Recovered spikes')
+    ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                s=dom.N_ech, label='Hidden spikes')
+    ax2.scatter(m_list[0].x[:, 0], m_list[0].x[:, 1], marker='+',
+                s=2*dom.N_ech, c='g', label='Recovered spikes')
     ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
 
@@ -858,12 +875,12 @@ def gif_results(acquis, m_zer, m_list, dom, video='gif', title=None):
             return
         ax2.clear()
         ax2.set_aspect('equal', adjustable='box')
-        ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom.X,dom.Y), 100,
-                             cmap='seismic')
-        ax2.scatter(m_zer.x[:,0], m_zer.x[:,1], marker='x',
-               s=4*dom.N_ech, label='GT spikes')
-        ax2.scatter(m_list[k].x[:,0], m_list[k].x[:,1], marker='+',
-                      s=8*dom.N_ech, c='g', label='Recovered spikes')
+        ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom.X, dom.Y), 100,
+                     cmap='seismic')
+        ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                    s=4*dom.N_ech, label='GT spikes')
+        ax2.scatter(m_list[k].x[:, 0], m_list[k].x[:, 1], marker='+',
+                    s=8*dom.N_ech, c='g', label='Recovered spikes')
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
         ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
@@ -899,8 +916,8 @@ domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 # X_grid_certif = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, N_ECH+1)
 # X_certif, Y_certif = np.meshgrid(X_grid_certif, X_grid_certif)
 
-m_ax0 = Mesure2D([8,10,6,7,9],
-                  [[0.2,0.23],[0.90,0.95],[0.33,0.82],[0.30,0.30],[0.23,0.38]])
+m_ax0 = Mesure2D([8, 10, 6, 7, 9],
+                 [[0.2, 0.23], [0.90, 0.95], [0.33, 0.82], [0.30, 0.30], [0.23, 0.38]])
 # m_ax0 = mesure_aleatoire(9)
 
 T_ech = 500       # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
@@ -913,8 +930,8 @@ R_y = covariance_pile(pile, pile_moy)
 R_x = m_ax0.covariance_kernel(domain.X, domain.Y)
 
 # Pour Q_\lambda(y) et P_\lambda(y_bar) à 3
-lambda_regul = 1e-7 # Param de relaxation pour SFW R_y
-lambda_regul2 = 3e-3 # Param de relaxation pour SFW y_moy
+lambda_regul = 1e-7  # Param de relaxation pour SFW R_y
+lambda_regul2 = 3e-3  # Param de relaxation pour SFW y_moy
 
 # # Pour Q_\lambda(y) et P_\lambda(y_bar) à 9
 # lambda_regul = 4e-8 # Param de relaxation pour SFW R_y
@@ -924,7 +941,7 @@ lambda_regul2 = 3e-3 # Param de relaxation pour SFW y_moy
 # lambda_regul = 1e-8 # Param de relaxation pour SFW R_y
 # lambda_regul2 = 5e-5 # Param de relaxation pour SFW y_moy
 
-iteration = m_ax0.N 
+iteration = m_ax0.N
 
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_regul,
@@ -940,10 +957,10 @@ certificat_V = etak(m_cov, R_y, domain, lambda_regul, obj='covar')
 certificat_V_moy = etak(m_moy, y, domain, lambda_regul2,
                         obj='acquis')
 
-if __saveFig__:
-    plt.figure(figsize=(12,4))
+if True:
+    plt.figure(figsize=(12, 4))
     plt.subplot(121)
-    plt.imshow(m_cov.covariance_kernel(domain.X,domain.Y))
+    plt.imshow(m_cov.covariance_kernel(domain.X, domain.Y))
     plt.colorbar()
     plt.title(r'$\Lambda(m_{M,x})$', fontsize=40)
     plt.subplot(122)
@@ -968,14 +985,13 @@ print(fr'Dist W_1 des x de Q_\lambda : {dist_x_cov:.3f}')
 print(fr'Dist W_1 des x de P_\lambda : {dist_x_moy:.3f}')
 
 
-
-y_simul = m_cov.kernel(domain.X,domain.Y)
+y_simul = m_cov.kernel(domain.X, domain.Y)
 
 if m_cov.a.size > 0:
     plot_results(m_cov, domain, nrj_cov, certificat_V)
 if m_moy.a.size > 0:
     plot_results(m_moy, domain, nrj_moy, certificat_V_moy,
-                  title='covar-moy-certificat-2d', obj='acquis')
+                 title='covar-moy-certificat-2d', obj='acquis')
 
 if __saveVid__:
     gif_pile(pile, m_ax0, domain)
@@ -1017,14 +1033,14 @@ def grad_lasso(params):
     residual = acquis - phi_vecteur(aa, xx, dom, obj)
     if obj == 'covar':
         for i in range(N):
-            gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
+            gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1])
             cov_gauss = np.outer(gauss, gauss)
-            partial_a[i] = regul - np.sum(cov_gauss*residual)/dom.N_ech**4
+            partial_a[i] = regul - np.sum(cov_gauss*residual) / dom.N_ech**4
         return partial_a
     elif obj == 'acquis':
         for i in range(N):
-            gauss = gaussienne_2D(dom.X - xx[i,0], dom.Y - xx[i,1])
-            partial_a[i] = regul - np.sum(gauss*residual)/dom.N_ech**2
+            gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1])
+            partial_a[i] = regul - np.sum(gauss*residual) / dom.N_ech**2
         return partial_a
     else:
         raise TypeError('Unknown BLASSO target.')
@@ -1039,7 +1055,7 @@ res_jac = scipy.optimize.minimize(lasso, para,
 
 # Juste pour tester si le gradient est bon
 eps = np.sqrt(np.finfo(float).eps)
-aqsf = np.linspace(-100,100,1000)
+aqsf = np.linspace(-100, 1000, 1000)
 lasso_test = [0]*len(aqsf)
 lasso_grad_test = [0]*len(aqsf)
 lasso_grad_fe = [0]*len(aqsf)
@@ -1048,7 +1064,7 @@ for i in range(len(aqsf)):
     lasso_grad_test[i] = grad_lasso([aqsf[i]])
     lasso_grad_fe[i] = scipy.optimize.approx_fprime([aqsf[i]], lasso, eps)
 
-plt.figure(figsize=(12,12))
+plt.figure(figsize=(12, 12))
 plt.subplot(211)
 plt.plot(aqsf, lasso_test, label='Lasso')
 plt.grid()
@@ -1077,6 +1093,7 @@ par = np.append(mes_cov[idd].a, np.reshape(mes_cov[idd].x, -1))
 par = np.random.random(3*mes_cov[idd].N)
 N_grille = acquis.size
 
+
 def lasso_double(params):
     a_p = params[:int(len(params)/3)]
     x_p = params[int(len(params)/3):]
@@ -1102,13 +1119,13 @@ def grad_lasso_double(params):
             partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
 
             gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
-                                                dom.Y - x_p[i, 1],
-                                                dom.X - x_p[i, 0])
+                                               dom.Y - x_p[i, 1],
+                                               dom.X - x_p[i, 0])
             cov_der_x = np.outer(gauss_der_x, gauss)
             partial_x[2*i] = 2*a_p[i]*np.sum(cov_der_x*residual)/N_grille
             gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
-                                                dom.Y - x_p[i, 1],
-                                                dom.Y - x_p[i, 1])
+                                               dom.Y - x_p[i, 1],
+                                               dom.Y - x_p[i, 1])
             cov_der_y = np.outer(gauss_der_y, gauss)
             partial_x[2*i+1] = 2*a_p[i]*np.sum(cov_der_y*residual)/N_grille
 
@@ -1135,7 +1152,6 @@ def grad_lasso_double(params):
         raise TypeError('Unknown BLASSO target.')
 
 
-
 eps = np.sqrt(np.finfo(float).eps)
 print(scipy.optimize.approx_fprime(par, lasso_double, eps))
 print(grad_lasso_double(par))
@@ -1150,7 +1166,7 @@ res_jac = scipy.optimize.minimize(lasso_double, par,
 
 # Juste pour tester si le gradient est bon
 eps = np.sqrt(np.finfo(float).eps)
-aqsf = np.linspace(-1,1.5,1000)
+aqsf = np.linspace(-1, 1.5, 1000)
 lasso_d_test = [0]*len(aqsf)
 lasso_d_grad_test = [0]*len(aqsf)
 lasso_d_grad_fe = [0]*len(aqsf)
@@ -1161,7 +1177,7 @@ for i in range(len(aqsf)):
     lasso_d_grad_fe[i] = scipy.optimize.approx_fprime(evol, lasso_double,
                                                       eps)[2]
 
-plt.figure(figsize=(12,12))
+plt.figure(figsize=(12, 12))
 plt.subplot(211)
 plt.plot(aqsf, lasso_d_test, label='D--Lasso')
 plt.grid()
@@ -1204,13 +1220,11 @@ plt.legend()
 # print(np.linalg.norm(res_jac.x - res.x))
 
 
-
-
 #%% Amélioration calcul certificat
 
-N_ECH = 2**4 # Taux d'échantillonnage
+N_ECH = 2**4  # Taux d'échantillonnage
 X_GAUCHE = 0
-X_DROIT = 1 
+X_DROIT = 1
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
@@ -1218,7 +1232,7 @@ domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
 
 R_y = m_ax0.covariance_kernel(X, Y)
 
-X_grid_big = np.linspace(X_GAUCHE-X_DROIT, X_DROIT, 2*N_ECH)
+X_grid_big = np.linspace(X_GAUCHE - X_DROIT, X_DROIT, 2*N_ECH)
 X_big, Y_big = np.meshgrid(X_grid_big, X_grid_big)
 # out = gaussienne_2D(X_big, Y_big)
 # adj = scipy.signal.convolve(y, out, mode='valid')/(N_ECH**2)
@@ -1252,7 +1266,7 @@ adj3 = phiAdjointSimps(R_y, domain)
 # adj3 = adj3.reshape(N_ECH, N_ECH)
 
 
-plt.figure(figsize=(8,6), dpi=600)
+plt.figure(figsize=(8, 6), dpi=60)
 plt.subplot(221)
 plt.imshow(adj3)
 plt.title('Simps', fontsize=20)
@@ -1268,9 +1282,9 @@ plt.title('Convol mieux ?', fontsize=20)
 
 #%% Spatial separable, Depthwise ? convolution
 
-N_ECH = 2**4 # Taux d'échantillonnage
+N_ECH = 2**4  # Taux d'échantillonnage
 X_GAUCHE = 0
-X_DROIT = 1 
+X_DROIT = 1
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
 R_y = m_ax0.covariance_kernel(X, Y)
@@ -1286,9 +1300,9 @@ gaus = gaussienne_2D(X_big, Y_big).reshape((N_ECH)**2, )
 
 sortie3 = np.zeros((N_ECH**2, N_ECH**2))
 for i in range(len(R_y)):
-    sortie3[i,:] = np.convolve(R_y[i,:], gaus, 'valid')/N_ECH**2
+    sortie3[i, :] = np.convolve(R_y[i, :], gaus, 'valid')/N_ECH**2
 for i in range(len(R_y)):
-    sortie3[:,i] = np.convolve(sortie3[:,i], gaus, 'valid')/N_ECH**2
+    sortie3[:, i] = np.convolve(sortie3[:, i], gaus, 'valid')/N_ECH**2
 sortie3 = np.diag(sortie3)
 sortie3 = sortie3.reshape(N_ECH, N_ECH)
 
@@ -1312,7 +1326,7 @@ plt.colorbar()
 # #%%
 # N_ECH = 2**4 # Taux d'échantillonnage
 # X_GAUCHE = 0
-# X_DROIT = 1 
+# X_DROIT = 1
 # GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 # X, Y = np.meshgrid(GRID, GRID)
 # domain = Domain(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y)
@@ -1329,5 +1343,3 @@ plt.colorbar()
 # plt.imshow(phiAdjointSimps(y, domain, obj='acquis'))
 # plt.colorbar()
 # plt.title('Convol mieux ?', fontsize=20)
-
-

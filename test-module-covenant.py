@@ -23,8 +23,6 @@ np.random.seed(95)
 N_ECH = 2**4  # Taux d'échantillonnage
 X_GAUCHE = 0
 X_DROIT = 1
-GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
-X, Y = np.meshgrid(GRID, GRID)
 SIGMA = 1e-1
 
 FOND = 2.0
@@ -32,7 +30,7 @@ SIGMA_BRUITS = 3e-1
 TYPE_BRUITS = 'gauss'
 
 
-domain = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y, SIGMA)
+domain = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 bruits_t = covenant.Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
 m_ax0 = covenant.mesure_aleatoire(9 , domain)
 
@@ -51,7 +49,7 @@ R_x = m_ax0.covariance_kernel(domain)
 test_obj = 'covar'
 test_acquis = R_y
 
-SIGMA_TARGET = 1.5 * SIGMA_BRUITS
+SIGMA_TARGET = 2* SIGMA_BRUITS
 
 (m_top, nrj_top, lambda_top) = covenant.homotopy(test_acquis, domain, 
                                                  SIGMA_TARGET, 
@@ -156,7 +154,7 @@ X_GAUCHE = 0
 X_DROIT = 1
 GRID = np.linspace(X_GAUCHE, X_DROIT, N_ECH)
 X, Y = np.meshgrid(GRID, GRID)
-domaine = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, GRID, X, Y, SIFMA)
+domaine = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIFMA)
 
 y_bar = np.mean(pile_sofi_test, axis=0)
 R_y = covenant.covariance_pile(pile_sofi_test, y_bar)
