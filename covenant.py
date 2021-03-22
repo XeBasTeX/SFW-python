@@ -1639,6 +1639,52 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
                         bbox_inches='tight', pad_inches=0.03)
 
 
+def plot_reconstruction(m, dom, acquis, q=4, title=None, saveFig=False,
+                        obj='covar'):
+    '''Affiche que 2 graphes importants pour la mesure m'''
+    if m.a.size > 0:
+        fig = plt.figure(figsize=(15, 6))
+        fig.suptitle(f'Reconstruction {obj}', fontsize=22)
+
+        plt.subplot(121)
+        cont1 = plt.contourf(dom.X, dom.Y, acquis, 100, cmap='gray')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
+        plt.colorbar()
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
+                    label='Recovered spikes')
+        plt.legend()
+
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
+
+        plt.subplot(122)
+        super_dom = dom.super_resolve(q)
+        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+                             100, cmap='gray')
+        for c in cont2.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        if obj == 'covar':
+            plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        plt.colorbar()
+        if title is None:
+            title = 'fig/experimentals.pdf'
+        elif isinstance(title, str):
+            title = 'fig/' + title + '.pdf'
+        else:
+            raise TypeError("You ought to give a str type name for the plot")
+        if saveFig:
+            plt.savefig(title, format='pdf', dpi=1000,
+                        bbox_inches='tight', pad_inches=0.03)
+
+
 def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
     '''Hierher à terminer de débogger'''
     # ax, fig = plt.subplots(figsize=(10,10))
