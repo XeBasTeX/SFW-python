@@ -31,27 +31,26 @@ pile = np.array(io.imread('sofi_filaments/tubulin_noiseless_lowBg.tif'),
 # pile = np.array(io.imread('sofi_filaments/tubulin_noiseless_lowBg.tif'),
 #                 dtype='float64')
 
+pile_moy = np.mean(pile, axis=0)
 # pile = pile / pile.shape[-1]
-y = pile[:, 16:32, 16:32]
-y = y / np.max(y)**(1/2)
+y = pile[:, 16:32, 16:32] / 1000
 # pile = pile + np.random.normal(0, 1e-1, size=pile.shape)
-pile_moy = np.mean(y, axis=0)
 
 emitters_loc = np.genfromtxt('sofi_filaments/emitters_noiseless_lowBg.csv',
                              delimiter=',')
 emitters_loc = np.fliplr(emitters_loc) / 64
 m_ax0 = covenant.Mesure2D(np.ones(emitters_loc.shape[0]), emitters_loc)
 
-y_bar = pile_moy
+y_bar = np.mean(y, axis=0)
 R_y = covenant.covariance_pile(y, y_bar)
 print('[+] Covariance calculée')
 
 #%% Calcul effectif
 
-N_ECH = pile_moy.shape[0]  # Taux d'échantillonnage
+N_ECH = 16
 X_GAUCHE = 0
 X_DROIT = 1
-FWMH = 2.2875 / N_ECH
+FWMH = 2.2875 / 64 # c le bon fwmh
 SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
 domain = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
@@ -59,7 +58,7 @@ q = 2**3
 super_domain = domain.super_resolve(q)
 
 
-iteration = 20
+iteration = 150
 lambda_cov = 1e-7
 lambda_moy = 1e-4  # s'arrête à 103 Diracs
 
@@ -82,10 +81,10 @@ lambda_moy = 1e-4  # s'arrête à 103 Diracs
                                          nIter=iteration, mesParIter=True,
                                          obj='covar', printInline=True)
 
-(m_moy, nrj_moy, mes_moy) = covenant.SFW(y_bar, domain,
+(m_moy, nrj_moy, mes_moy) = covenant.SFW(kernel_tmp[16:32, 16:32] , domain,
                                          regul=lambda_moy,
                                          nIter=iteration , mesParIter=True,
-                                         obj='acquis', printInline=False)
+                                         obj='acquis', printInline=True)
 
 print(f'm_cov : {m_cov.N} Diracs')
 print(f'm_moy : {m_moy.N} Diracs')
@@ -114,6 +113,8 @@ if m_cov.N > 0:
 
 
 m_tot = covenant.Mesure2D()
+
+
 
 #%% Diviser pour régner
 
@@ -264,6 +265,8 @@ with open('m_tot.pkl', 'wb') as output:
 
 #%% Retrieve the m_plot
 
+import pickle
+
 objects = []
 with (open("m_tot.pkl", "rb")) as openfile:
     while True:
@@ -275,3 +278,39 @@ with (open("m_tot.pkl", "rb")) as openfile:
 m_Mx = objects[0]
 covenant.plot_reconstruction(m_Mx, domain_big, y_big, obj='covar',
                              saveFig=True, title='filaments-covar-global')
+
+#%% Vérifier qu'on a le bon sigma
+
+N_ECH = 64 # Taux d'échantillonnage
+X_GAUCHE = 0
+X_DROIT = 1
+FWMH = 2.2875  / 64
+SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
+domain_tmp = covenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
+
+# On ne prend que 1 mes de dirac sur 10 (ou sur 20)
+m_tmp = covenant.Mesure2D(np.ones(emitters_loc[0:-1:5, :].shape[0]),
+                          emitters_loc[0:-1:5, :])
+m_tmp_2 = covenant.Mesure2D(np.ones(emitters_loc[0:-1:20, :].shape[0]),
+                          emitters_loc[0:-1:20, :])
+kernel_tmp = m_tmp.kernel(domain_tmp)
+
+fig = plt.figure(figsize=(12, 4))
+plt.subplot(121)
+plt.imshow(pile_moy)
+plt.title(r'Mean $\overline{y}$', fontsize=30)
+plt.colorbar()
+plt.subplot(122)
+plt.title(r'Kernel $m_{a_0, x_0}$', fontsize=30)
+plt.imshow(kernel_tmp)
+plt.colorbar()
+
+covar_tmp = m_tmp_2.covariance_kernel(domain_tmp)
+
+fig2 = plt.figure(figsize=(12, 4))
+plt.imshow(covar_tmp[:600, :600])
+plt.title(r'$\Lambda(m_{M,x})$', fontsize=30)
+plt.colorbar()
+
+
+# np.linalg.norm(kernel_tmp - pile_moy)

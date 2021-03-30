@@ -8,7 +8,7 @@ and reconstructing those measures w.r.t to a provided acquistion
 """
 
 __team__ = 'Morpheme'
-__deboggage__ = False
+__deboggage__ = True
 __normalis_PSF__ = False
 
 
@@ -22,6 +22,35 @@ import ot
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
+
+
+
+
+def sum_normalis(X_domain, Y_domain, sigma_g):
+    """
+    Renvoie la somme de toutes les composantes de la PSF discrète, pour que 
+    l'on puisse normaliser la PSF, de sorte à avoir np.sum(PSF) = 1
+
+    Parameters
+    ----------
+    X_domain : ndarray
+        Grille des coordonnées X (issue de meshgrid).
+    Y_domain : ndarray
+        Grille des coordonnées Y (issue de meshgrid).
+    sigma_g : double
+        :math:`\sigma` paramètre de la gaussienne.
+
+    Returns
+    -------
+    double
+        Somme de toutes les composantes de la PSF
+
+    """
+    expo = np.exp(-(np.power(X_domain, 2) +
+                np.power(Y_domain, 2))/(2*sigma_g**2))
+    normalis = sigma_g * (2*np.pi)
+    normalis = 1 / normalis
+    return np.sum(normalis * expo)
 
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
@@ -55,33 +84,6 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
         return expo * normalis / sum_normalis
     else:
         return expo * normalis
-
-
-def sum_normalis(X_domain, Y_domain, sigma_g):
-    """
-    Renvoie la somme de toutes les composantes de la PSF discrète, pour que 
-    l'on puisse normaliser la PSF, de sorte à avoir np.sum(PSF) = 1
-
-    Parameters
-    ----------
-    X_domain : ndarray
-        Grille des coordonnées X (issue de meshgrid).
-    Y_domain : ndarray
-        Grille des coordonnées Y (issue de meshgrid).
-    sigma_g : double
-        :math:`\sigma` paramètre de la gaussienne.
-
-    Returns
-    -------
-    double
-        Somme de toutes les composantes de la PSF
-
-    """
-    expo = np.exp(-(np.power(X_domain, 2) +
-                np.power(Y_domain, 2))/(2*sigma_g**2))
-    normalis = sigma_g * (2*np.pi)
-    normalis = 1 / normalis
-    return np.sum(normalis * expo)
 
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
@@ -925,6 +927,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     if mesParIter:
         mes_vecteur = np.array([])
     nrj_vecteur = np.zeros(nIter)
+    N_vecteur = [Nk]
     for k in range(nIter):
         if printInline:
             print('\n' + 'Étape numéro ' + str(k))
@@ -936,7 +939,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         x_star = np.array(x_star_index)[::-1]/N_ech_y
         if printInline:
             print(fr'* x^* index {x_star} max ' +
-                  fr'à {np.round(certif_abs[x_star_index], 2)}')
+                  fr'à {certif_abs[x_star_index]:.2f}')
 
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
@@ -1067,7 +1070,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
         initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-        a_part = list(zip([0]*(Nk+1), [30]*(Nk+1)))
+        a_part = list(zip([0]*(Nk+1), [10000]*(Nk+1)))
         x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
         bounds_bfgs = a_part + x_part
         tes = scipy.optimize.minimize(lasso_double, initial_guess,
@@ -1093,9 +1096,22 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
         if printInline:
-            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
+            print(f'* Énergie : {nrj_vecteur[k]:.3e}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
+        try:
+            if (N_vecteur[-1] == N_vecteur[-2] 
+                and N_vecteur[-1] == N_vecteur[-3] 
+                and N_vecteur[-1] == N_vecteur[-4]):
+                if printInline:
+                    print('\n[!] Algorithme a optimisé')
+                    print("\n\n---- Fin de la boucle ----")
+                if mesParIter:
+                    return(mesure_k, nrj_vecteur[:k], mes_vecteur)
+                return(mesure_k, nrj_vecteur)
+        except IndexError:
+            pass
+        N_vecteur = np.append(N_vecteur, Nk)
 
     # Fin des itérations
     if printInline:
@@ -1447,7 +1463,7 @@ def concomitant_SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None,
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
         initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-        a_part = list(zip([0]*(Nk+1), [30]*(Nk+1)))
+        a_part = list(zip([0]*(Nk+1), [10000]*(Nk+1)))
         x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
         bounds_bfgs = a_part + x_part
         tes = scipy.optimize.minimize(lasso_double, initial_guess,
@@ -1872,7 +1888,7 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
     return fig
 
 
-def compare_covariance(m, covariance, dom):
+def compare_covariance(m, covariance, dom, saveFig=True):
     fig = plt.figure(figsize=(12, 4))
     ax1 = fig.add_subplot(121)
     lambada = ax1.imshow(m.covariance_kernel(dom))
@@ -1882,3 +1898,16 @@ def compare_covariance(m, covariance, dom):
     ax2.imshow(covariance)
     fig.colorbar(lambada)
     ax2.set_title(r'$R_y$', fontsize=40)
+    if saveFig:
+        plt.savefig('fig/R_x-R_y-filaments.pdf', format='pdf', dpi=1000,
+                    bbox_inches='tight', pad_inches=0.03)
+
+def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
+    plt.scatter(m_ax0.x[0:-1:reduc, 0], 1 - m_ax0.x[0:-1:reduc, 1],
+                marker='x', s=0.001)
+    plt.title('Ground-truth position of ẟ-peaks', fontsize=20)
+    plt.xlabel('x', fontsize=20)
+    plt.ylabel('y', fontsize=20)
+    if saveFig:
+        plt.savefig('fig/gt.pdf', format='pdf', dpi=1000,
+                    bbox_inches='tight', pad_inches=0.03)

@@ -8,7 +8,7 @@ Created on Sat Dec 26 10:34:43 2020
 
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
-__saveFig__ = True
+__saveFig__ = False
 __saveVid__ = False
 __deboggage__ = False
 
@@ -548,7 +548,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
         # On résout LASSO (étape 7)
         def lasso(aa):
             difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
-            attache = 0.5*np.linalg.norm(difference)**2/N_grille
+            attache = 0.5*np.linalg.norm(difference)**2#/N_grille
             parcimonie = regul*np.linalg.norm(aa, 1)
             return attache + parcimonie
 
@@ -563,13 +563,13 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
                     gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1])
                     cov_gauss = np.outer(gauss, gauss)
                     normalis = dom.N_ech**4
-                    partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)#/normalis
                 return partial_a
             elif obj == 'acquis':
                 for i in range(N):
                     gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1])
                     normalis = dom.N_ech**2
-                    partial_a[i] = regul - np.sum(gauss*residual)/normalis
+                    partial_a[i] = regul - np.sum(gauss*residual)#/normalis
                 return partial_a
             else:
                 raise TypeError('Unknown BLASSO target.')
@@ -591,7 +591,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
             # Bout de code immonde, à corriger !
             x_p = x_p.reshape((len(a_p), 2))
             residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
-            attache = 0.5*np.linalg.norm(residual)**2/N_grille
+            attache = 0.5*np.linalg.norm(residual)**2#/N_grille
             parcimonie = regul*np.linalg.norm(a_p, 1)
             return attache + parcimonie
 
@@ -607,37 +607,37 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
                 for i in range(N):
                     gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1])
                     cov_gauss = np.outer(gauss, gauss)
-                    partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)#/N_grille
 
                     gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.X - x_p[i, 0])
                     cov_der_x = np.outer(gauss_der_x, gauss)
                     partial_x[2*i] = 2*a_p[i] * \
-                        np.sum(cov_der_x*residual) / (N_grille)
+                        np.sum(cov_der_x*residual) #/ (N_grille)
                     gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                        dom.Y - x_p[i, 1],
                                                        dom.Y - x_p[i, 1])
                     cov_der_y = np.outer(gauss_der_y, gauss)
                     partial_x[2*i+1] = 2*a_p[i] * \
-                        np.sum(cov_der_y*residual) / (N_grille)
+                        np.sum(cov_der_y*residual) #/ (N_grille)
 
                 return(partial_a + partial_x)
             elif obj == 'acquis':
                 for i in range(N):
                     integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
                                                           dom.Y - x_p[i, 1]))
-                    partial_a[i] = regul - integ/N_grille
+                    partial_a[i] = regul - integ#/N_grille
 
                     grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
                                                         dom.Y - x_p[i, 1],
                                                         dom.X - x_p[i, 0])
-                    integ_x = np.sum(residual*grad_gauss_x) / (N_grille)
+                    integ_x = np.sum(residual*grad_gauss_x) #/ (N_grille)
                     partial_x[2*i] = a_p[i] * integ_x
                     grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
                                                         dom.Y - x_p[i, 1],
                                                         dom.Y - x_p[i, 1])
-                    integ_y = np.sum(residual*grad_gauss_y) / (N_grille)
+                    integ_y = np.sum(residual*grad_gauss_y) #/ (N_grille)
                     partial_x[2*i+1] = a_p[i] * integ_y
 
                 return(partial_a + partial_x)
@@ -646,15 +646,16 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mesParIter=False, obj='covar'):
 
         # On met la graine au format array pour scipy...minimize
         # il faut en effet que ça soit un vecteur
+        # Hieher !! Attention cette constraint peut poser problème
         initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-        a_part = list(zip([0]*(Nk+1), [30]*(Nk+1)))
+        a_part = list(zip([0]*(Nk+1), [30000]*(Nk+1)))
         x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
         bounds_bfgs = a_part + x_part
         tes = scipy.optimize.minimize(lasso_double, initial_guess,
-                                      method='L-BFGS-B',
-                                      jac=grad_lasso_double,
-                                      bounds=bounds_bfgs,
-                                      options={'disp': __deboggage__})
+                                      # method='L-BFGS-B',
+                                       jac=grad_lasso_double,
+                                       bounds=bounds_bfgs,
+                                      options={'disp': True})
         a_k_plus = (tes.x[:int(len(tes.x)/3)])
         x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
         # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
@@ -924,6 +925,7 @@ T_ech = 500       # Il faut mettre vraiment bcp d'échantillons pour R_x=R_y !
 
 pile = pile_aquisition(m_ax0, domain, b_fond, niveau_bruits,
                        bruits=type_bruits)
+pile = pile / np.max(pile)**(1/2)
 pile_moy = np.mean(pile, axis=0)
 y = pile_moy
 R_y = covariance_pile(pile, pile_moy)
