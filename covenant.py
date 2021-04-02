@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Provides the essential functions for simulating 2D discrete Radon measures
+Provides the essential functions for simulating nD discrete Radon measures
 and reconstructing those measures w.r.t to a provided acquistion
 
-@author: Bastien Laville (https://github.com/XeBasTeX)
+@author: Bastien Laville at https://github.com/XeBasTeX
 """
 
 __team__ = 'Morpheme'
@@ -333,7 +333,7 @@ class Mesure2D:
                                     sigma)
             noyau_v = gaussienne_2D(X_domain - x[i, 0], Y_domain - x[i, 1],
                                     sigma)
-            acquis += a[i]*np.outer(noyau_u, noyau_v)
+            acquis += a[i] * np.outer(noyau_u, noyau_v)
         return acquis
 
     def acquisition(self, dom, echantillo, bru):
