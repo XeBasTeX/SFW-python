@@ -20,6 +20,10 @@ import matplotlib.pyplot as plt
 import ot
 
 
+# # GPU acceleration if needed
+# # Currently ONLY on CPU, you might want to put cudavenant in GPU also
+# dtype = torch.cuda.float if torch.cuda.is_available() else torch.float
+
 
 def sum_normalis(X_domain, Y_domain, sigma_g):
     """
@@ -167,7 +171,7 @@ class Domain2D:
             Les grilles coordonnées de x et des y.
 
         """
-        return torch.meshrgrid(self.X_grid)
+        return torch.meshgrid(self.X_grid)
 
     def big(self):
         """
@@ -186,6 +190,44 @@ class Domain2D:
                                2*self.N_ech - 1)
         X_big, Y_big = torch.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
+
+    def biggy(self):
+        """
+        Renvoie les grilles adaptées pour le calcul de la convolution discrètes 
+        (par exemple dans phiAdjoint) entre deux matrices
+
+        Returns
+        -------
+        X_big : Tensor
+                Matrice coordonnées des x
+        Y_big : Tensor
+                Matrice coordonnées des y
+
+        """
+        grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
+                               2*self.N_ech)
+        X_big, Y_big = torch.meshgrid(grid_big, grid_big)
+        return(X_big, Y_big)
+
+
+    def reverse(self):
+        """
+        Renvoie les grilles adaptées pour le calcul de la convolution discrètes 
+        (par exemple dans phiAdjoint) entre deux matrices
+
+        Returns
+        -------
+        X_big : Tensor
+                Matrice coordonnées des x
+        Y_big : Tensor
+                Matrice coordonnées des y
+
+        """
+        grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
+                                  self.N_ech)
+        X_big, Y_big = torch.meshgrid(grid_big, grid_big)
+        return(X_big, Y_big)
+
 
     def super_resolve(self, q=4):
         super_N_ech = q * self.N_ech
@@ -210,8 +252,7 @@ class Mesure2D:
         if amplitude is None or position is None:
             amplitude = torch.Tensor()
             position = torch.Tensor()
-        if len(amplitude) != len(position):
-            raise ValueError('Pas le même nombre')
+        assert(len(amplitude) == len(position))
         if isinstance(amplitude, torch.Tensor) and isinstance(position,
                                                               torch.Tensor):
             self.a = amplitude
@@ -667,97 +708,101 @@ def phi_vecteur(a, x, dom, obj='covar'):
 #     raise TypeError
 
 
-# def phiAdjoint(acquis, dom, obj='covar'):
-#     """
-#     Hierher débugger ; taille_x et taille_y pas implémenté
+def phiAdjoint(acquis, dom, obj='covar'):
+    """
+    Hierher débugger ; taille_x et taille_y pas implémenté
 
-#     Parameters
-#     ----------
-#     acquis : Tensor 
-#         Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
-#     dom : Domain2D
-#         Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
-#         de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
-#         l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
-#         la covariance.
-#     obj : str, optional
-#         Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
-#         reconstruire sur la moyenne. The default is 'covar'.
+    Parameters
+    ----------
+    acquis : Tensor 
+        Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        la covariance.
+    obj : str, optional
+        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
+        reconstruire sur la moyenne. The default is 'covar'.
 
-#     Raises
-#     ------
-#     TypeError
-#         L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+    Raises
+    ------
+    TypeError
+        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
 
-#     Returns
-#     -------
-#     eta : Tensor
-#         Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
-#         discrétisée. Utile pour calculer la discrétisation du certificat 
-#         :math:`\eta` associé à une mesure.
+    Returns
+    -------
+    eta : Tensor
+        Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
+        discrétisée. Utile pour calculer la discrétisation du certificat 
+        :math:`\eta` associé à une mesure.
 
-#     """
-#     N_ech = dom.N_ech
-#     eta = np.zeros(np.shape(dom.X))
-#     if obj == 'covar':
-#         (X_big, Y_big) = dom.big()
-#         sigma = dom.sigma
-#         h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
-#         convol_row = scipy.signal.convolve2d(acquis, h_vec, 'same').T/N_ech**2
-#         adj = np.diag(scipy.signal.convolve2d(convol_row, h_vec, 'same'))
-#         eta = adj.reshape(N_ech, N_ech) / N_ech**2
-#         return eta
-#     if obj == 'acquis':
-#         (X_big, Y_big) = dom.big()
-#         sigma = dom.sigma
-#         out = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
-#         eta = scipy.signal.convolve2d(out, acquis, mode='valid') / N_ech**2
-#         return eta
-#     raise TypeError
+    """
+    N_ech = dom.N_ech
+    sigma = dom.sigma
+    if obj == 'covar':
+        # (Xt, Yt) = domain.get_domain()
+        # h_vec = gaussienne_2D(Xt, Yt, SIGMA,
+        #                       undivide=__normalis_PSF__).reshape(-1)
+        # lambda_vec = torch.outer(h_vec, h_vec)
+        # eta = torch.fft.ifft2(torch.fft.fft2(lambda_vec) @\
+        #                       torch.fft.fft2(acquis))
+        eta = acquis
+        eta = torch.diag(torch.abs(eta)).reshape(N_ECH, N_ECH)
+        return eta
+    if obj == 'acquis':
+        (X_big, Y_big) = domain.big()
+        h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
+        h_ker = h_vec.reshape(1, 1, N_ech*2-1 , N_ech*2-1)
+        y_arr = y_bar.reshape(1, 1, N_ech , N_ech)
+        eta = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
+        eta = torch.squeeze(eta)
+        return eta
+    raise TypeError
 
 
-# def etak(mesure, acquis, dom, regul, obj='covar'):
-#     r"""Certificat dual :math:`\eta_\lambda` associé à la mesure 
-#     :math:`m_\lambda`. Ce certificat permet de donner une approximation 
-#     (sur la grille) de la  position du Dirac de plus forte intensité du 
-#     résidu.
+def etak(mesure, acquis, dom, regul, obj='covar'):
+    r"""Certificat dual :math:`\eta_\lambda` associé à la mesure 
+    :math:`m_\lambda`. Ce certificat permet de donner une approximation 
+    (sur la grille) de la  position du Dirac de plus forte intensité du 
+    résidu.
 
-#     Parameters
-#     ----------
-#     mesure : Mesure2D
-#         Mesure discrète :math:`m` dont on veut obtenir le certificat duaL.
-#     acquis : Tensor 
-#         Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
-#     dom : Domain2D
-#         Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
-#         de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
-#         l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
-#         la covariance.
-#     regul : double
-#         Paramètre de régularisation `\lambda`.
-#     obj : str, optional
-#         Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
-#         reconstruire sur la moyenne. The default is 'covar'.
+    Parameters
+    ----------
+    mesure : Mesure2D
+        Mesure discrète :math:`m` dont on veut obtenir le certificat duaL.
+    acquis : Tensor 
+        Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        la covariance.
+    regul : double
+        Paramètre de régularisation `\lambda`.
+    obj : str, optional
+        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
+        reconstruire sur la moyenne. The default is 'covar'.
 
-#     Returns
-#     -------
-#     eta : Tensor
-#         Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
-#         discrétisée. Certificat dual :math:`\eta` associé à la mesure.
+    Returns
+    -------
+    eta : Tensor
+        Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
+        discrétisée. Certificat dual :math:`\eta` associé à la mesure.
 
-#     Notes
-#     -------
-#     Si l'objectif est la covariance :
+    Notes
+    -------
+    Si l'objectif est la covariance :
 
-#     .. math:: \eta_\mathcal{Q} = \Lambda^\ast(\Lambda m - R_y)
+    .. math:: \eta_\mathcal{Q} = \Lambda^\ast(\Lambda m - R_y)
 
-#     Si l'objectif est la moyenne :
+    Si l'objectif est la moyenne :
 
-#     .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
+    .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
 
-#     """
-#     eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
-#     return eta
+    """
+    eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
+    return eta
 
 
 def pile_aquisition(m, dom, bru, T_ech):
@@ -830,26 +875,32 @@ def covariance_pile(stack):
 
 
 
-N_ECH = 64
+N_ECH = 32
 X_GAUCHE = 0
 X_DROIT = 1
 FWMH = 2.2875 / N_ECH
-SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
+SIGMA = 0.15
 domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
 a = torch.Tensor([1,2])
-x = torch.Tensor([[0.1, 0.2], [0.8, 0.7]])
+x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
 x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
 
 m = Mesure2D(a,x)
 m2 = Mesure2D(a,x2)
 
-plt.imshow(m.kernel(domain))
-plt.figure()
-plt.imshow(m.cov_kernel(domain))
+plt.imshow(m.kernel(domain), extent=[0,1,1,0])
+plt.title('$\Phi(m)$', fontsize=28)
+plt.colorbar()
 
-FOND = 2.0
-SIGMA_BRUITS = 3e-1
+plt.figure()
+plt.imshow(m.cov_kernel(domain), extent=[0,1,1,0])
+plt.colorbar()
+plt.title('$\Lambda(m)$', fontsize=28)
+
+
+FOND = 0.0
+SIGMA_BRUITS = 0.000001e-1
 TYPE_BRUITS = 'gauss'
 
 
@@ -861,5 +912,414 @@ y_bar = pile.mean(0)
 cov_pile = covariance_pile(pile)
 
 plt.figure()
+plt.scatter(x[:,0], x[:,1])
 plt.imshow(cov_pile)
+plt.colorbar()
+plt.title('$R_y$', fontsize=28)
+
+
+
+
+
+
+
+
+# # Calcul certificat P_\lambda
+# (X_big, Y_big) = domain.big()
+# h_vec = gaussienne_2D(X_big, Y_big, SIGMA, undivide=__normalis_PSF__)
+# h_ker = h_vec.reshape(1, 1, N_ECH*2-1 , N_ECH*2-1)
+# y_arr = y_bar.reshape(1, 1, N_ECH , N_ECH)
+# etas = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
+# etap = torch.flip(torch.squeeze(etas), [0, 1])
+
+# plt.figure()
+# plt.imshow(etap, extent=[0,1,1,0])
+# plt.colorbar()
+# plt.title('$\eta_\lambda^{\mathcal{P}}$', fontsize=28)
+
+
+# # # Calcul certificat Q_\lambda
+# # (X_big, Y_big) = domain.biggy()
+# # h_vec = gaussienne_2D(X_big, Y_big, SIGMA,
+# #                       undivide=__normalis_PSF__).reshape(-1).cuda()
+# # lambda_vec = torch.outer(h_vec, h_vec)[:-1,:-1]
+# # h_ker = lambda_vec.reshape(1, 1, 4*N_ECH**2 -1 , 4*N_ECH**2-1)
+# # R_y_arr = cov_pile.reshape(1, 1, N_ECH**2 , N_ECH**2).cuda()
+# # eta = torch.nn.functional.conv2d(h_ker, R_y_arr, stride=1)
+# # eta = torch.diagonal(torch.squeeze(eta)).cpu()
+# # plt.imshow(eta.reshape(N_ECH, N_ECH))
+
+
+# (Xt, Yt) = domain.reverse()
+# h_vec = gaussienne_2D(Xt, Yt, SIGMA, undivide=__normalis_PSF__).reshape(-1)
+# lambda_vec = torch.outer(h_vec, h_vec)
+# R_y_arr = cov_pile
+# eta = R_y_arr
+# output = torch.diag(torch.abs(eta)).reshape(N_ECH, N_ECH)
+
+# plt.figure()
+# plt.imshow(output, extent=[0,1,1,0])
+# plt.colorbar()
+# plt.title('$\eta_\lambda^{\mathcal{Q}}$', fontsize=28)
+
+
+
+
+
+def unravel_index(indices, shape):
+    r"""Converts flat indices into unraveled coordinates in a target shape.
+
+    This is a `torch` implementation of `numpy.unravel_index`.
+
+    Args:
+        indices: A tensor of indices, (*, N).
+        shape: The targeted shape, (D,).
+
+    Returns:
+        unravel coordinates, (*, N, D).
+    """
+    shape = torch.tensor(shape)
+    indices = indices % shape.prod()  # prevent out-of-bounds indices
+
+    coord = torch.zeros(indices.size() + shape.size(), dtype=int)
+
+    for i, dim in enumerate(reversed(shape)):
+        coord[..., i] = indices % dim
+        indices = indices // dim
+
+    return coord.flip(-1)
+
+
+# Le fameux algo de Sliding Frank Wolfe
+def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
+        obj='covar', printInline=True):
+    """Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
+    solution du BLASSO [1].
+
+    Si l'objectif est la covariance :
+
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) = \\
+        \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2. \\
+            \quad (\mathcal{Q}_\lambda (y))
+
+    Si l'objectif est la moyenne :
+
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) = \\
+        \lambda |m|(\mathcal{X}) + \\
+            \dfrac{1}{2} ||\overline{y} - \Phi (m)||^2.\\
+                \quad (\mathcal{P}_\lambda (\overline{y}))
+
+
+    Paramètres
+    ----------
+    acquis : ndarray 
+            Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    regul : double, optional
+        Paramètre de régularisation :math:`\lambda`. The default is 1e-5.
+    nIter : int, optional
+        Nombre d'itérations maximum pour l'algorithme. The default is 5.
+    mes_init : Mesure2D, optional
+        Mesure pour initialiser l'algorithme. Si None est passé en argument, 
+        l'algorithme initialisera avec la mesure nulle. The default is None.
+    mesParIter : boolean, optional
+        Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les 
+        :math:`k` mesures calculées par SFW. The default is False.
+    obj : str, optional
+        Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Sorties
+    -------
+    mesure_k : Mesure2D
+            Dernière mesure reconstruite par SFW.
+    nrj_vecteur : ndarray
+                Vecteur qui donne l'énergie :math:`T_\lambda(m^k)` 
+                au fil des itérations.
+    mes_vecteur : ndarray
+                Vecteur des mesures reconstruites au fil des itérations.
+
+    Raises
+    ------
+    TypeError
+        Si l'objectif `obj` n'est pas connu, lève une exception.
+
+    Références
+    ----------
+    [1] Quentin Denoyelle, Vincent Duval, Gabriel Peyré, Emmanuel Soubies. 
+    The Sliding Frank-Wolfe Algorithm and its Application to Super-Resolution 
+    Microscopy. Inverse Problems, IOP Publishing, In press
+    https://hal.archives-ouvertes.fr/hal-01921604
+    """
+    N_ech_y = dom.N_ech  # hierher à adapter
+    N_grille = dom.N_ech**2
+    if obj == 'covar':
+        N_grille = N_grille**2
+    if mes_init == None:
+        mesure_k = Mesure2D()
+        a_k = torch.Tensor()
+        x_k = torch.Tensor()
+        x_k_demi = torch.Tensor()
+        Nk = 0
+    else:
+        mesure_k = mes_init
+        a_k = mes_init.a
+        x_k = mes_init.x
+        Nk = mesure_k.N
+    if mesParIter:
+        mes_vecteur = torch.Tensor()
+    nrj_vecteur = torch.zeros(nIter)
+    N_vecteur = [Nk]
+    for k in range(nIter):
+        if printInline:
+            print('\n' + 'Étape numéro ' + str(k))
+        eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
+        certif_abs = torch.abs(eta_V_k)
+        x_star_index = unravel_index(certif_abs.argmax(), eta_V_k.shape)
+        x_star = x_star_index / N_ech_y # passer de l'idx à xstar
+        if printInline:
+            print(fr'* x^* index {x_star} max ' +
+                  fr'à {certif_abs[x_star_index]:.2f}')
+
+        # Condition d'arrêt (étape 4)
+        if torch.abs(eta_V_k[x_star_index]) < 1:
+            nrj_vecteur[k] = mesure_k.energie(dom, acquis,
+                                              regul, obj=obj)
+            if printInline:
+                print("\n\n---- Condition d'arrêt ----")
+            if mesParIter:
+                return(mesure_k, nrj_vecteur[:k], mes_vecteur)
+            return(mesure_k, nrj_vecteur[:k])
+
+        # Création du x positions estimées
+        mesure_k_demi = Mesure2D()
+        if x_k.size == 0:
+            x_k_demi = torch.vstack(x_star)
+            lasso_guess = torch.ones(Nk+1)
+        else:
+            x_k_demi = torch.vstack(x_k, x_star)
+            lasso_guess = torch.cat((a_k, [1.0]))
+
+        # On résout LASSO (étape 7)
+        def lasso(aa):
+            difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
+            attache = 0.5*np.linalg.norm(difference)**2/N_grille
+            parcimonie = regul*np.linalg.norm(aa, 1)
+            return attache + parcimonie
+
+        def grad_lasso(params):
+            aa = params
+            xx = x_k_demi
+            N = len(aa)
+            partial_a = N*[0]
+            residual = acquis - phi_vecteur(aa, xx, dom, obj)
+            if obj == 'covar':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1],
+                                          dom.sigma)
+                    cov_gauss = np.outer(gauss, gauss)
+                    normalis = dom.N_ech**4
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
+                return partial_a
+            elif obj == 'acquis':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1],
+                                          dom.sigma)
+                    normalis = dom.N_ech**2
+                    partial_a[i] = regul - np.sum(gauss*residual)/normalis
+                return partial_a
+            else:
+                raise TypeError('Unknown BLASSO target.')
+
+        res = scipy.optimize.minimize(lasso, lasso_guess,
+                                      jac=grad_lasso,
+                                      options={'disp': __deboggage__})
+        a_k_demi = res.x
+
+        # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
+        # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
+        if printInline:
+            print('* Optim convexe')
+        mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
+
+        # On résout double LASSO non-convexe (étape 8)
+        def lasso_double(params):
+            a_p = params[:int(len(params)/3)]
+            x_p = params[int(len(params)/3):]
+            x_p = x_p.reshape((len(a_p), 2))
+            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom,
+                                                              obj))**2/N_grille
+            parcimonie = regul*np.linalg.norm(a_p, 1)
+            return attache + parcimonie
+
+        def grad_lasso_double(params):
+            a_p = params[:int(len(params)/3)]
+            x_p = params[int(len(params)/3):]
+            x_p = x_p.reshape((len(a_p), 2))
+            N = len(a_p)
+            partial_a = N*[0]
+            partial_x = 2*N*[0]
+            residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
+            if obj == 'covar':
+                for i in range(N):
+                    gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1],
+                                          dom.sigma)
+                    cov_gauss = np.outer(gauss, gauss)
+                    partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
+
+                    gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.X - x_p[i, 0],
+                                                       dom.sigma)
+                    cov_der_x = np.outer(gauss_der_x, gauss)
+                    partial_x[2*i] = 2*a_p[i] * \
+                        np.sum(cov_der_x*residual) / (N_grille)
+                    gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.Y - x_p[i, 1],
+                                                       dom.sigma)
+                    cov_der_y = np.outer(gauss_der_y, gauss)
+                    partial_x[2*i+1] = 2*a_p[i] * \
+                        np.sum(cov_der_y*residual) / (N_grille)
+
+                return(partial_a + partial_x)
+            elif obj == 'acquis':
+                for i in range(N):
+                    integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
+                                                          dom.Y - x_p[i, 1],
+                                                          dom.sigma))
+                    partial_a[i] = regul - integ/N_grille
+
+                    grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.X - x_p[i, 0],
+                                                        dom.sigma)
+                    integ_x = np.sum(residual*grad_gauss_x) / (N_grille)
+                    partial_x[2*i] = a_p[i] * integ_x
+                    grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.Y - x_p[i, 1],
+                                                        dom.sigma)
+                    integ_y = np.sum(residual*grad_gauss_y) / (N_grille)
+                    partial_x[2*i+1] = a_p[i] * integ_y
+
+                return(partial_a + partial_x)
+            else:
+                raise TypeError('Unknown BLASSO target.')
+
+        # On met la graine au format array pour scipy...minimize
+        # il faut en effet que ça soit un vecteur
+        initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
+        a_part = list(zip([0]*(Nk+1), [10000]*(Nk+1)))
+        x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
+        bounds_bfgs = a_part + x_part
+        tes = scipy.optimize.minimize(lasso_double, initial_guess,
+                                       bounds=bounds_bfgs,
+                                      options={'disp': True})
+        a_k_plus = (tes.x[:int(len(tes.x)/3)])
+        x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
+        # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
+        # print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
+
+        # Mise à jour des paramètres avec retrait des Dirac nuls
+        mesure_k = Mesure2D(a_k_plus, x_k_plus)
+        mesure_k = mesure_k.prune()
+        # mesure_k = merge_spikes(mesure_k)
+        a_k = mesure_k.a
+        x_k = mesure_k.x
+        Nk = mesure_k.N
+        if printInline:
+            print(f'* Optim non-convexe : {Nk} Diracs')
+
+        # Graphe et énergie
+        nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
+        if printInline:
+            print(f'* Énergie : {nrj_vecteur[k]:.3e}')
+        if mesParIter == True:
+            mes_vecteur = np.append(mes_vecteur, [mesure_k])
+        try:
+            if (N_vecteur[-1] == N_vecteur[-2] 
+                and N_vecteur[-1] == N_vecteur[-3] 
+                and N_vecteur[-1] == N_vecteur[-4]):
+                if printInline:
+                    print('\n[!] Algorithme a optimisé')
+                    print("\n\n---- Fin de la boucle ----")
+                if mesParIter:
+                    return(mesure_k, nrj_vecteur[:k], mes_vecteur)
+                return(mesure_k, nrj_vecteur)
+        except IndexError:
+            pass
+        N_vecteur = np.append(N_vecteur, Nk)
+
+    # Fin des itérations
+    if printInline:
+        print("\n\n---- Fin de la boucle ----")
+    if mesParIter:
+        return(mesure_k, nrj_vecteur, mes_vecteur)
+    return(mesure_k, nrj_vecteur)
+
+
+
+
+# https://stackoverflow.com/questions/50621786/lbfgs-never-converges-in-large-dimensions-in-pytorch
+# Optim : https://discuss.pytorch.org/t/use-pytorch-optimizer-to-minimize-a-user-function/66712/8
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def wasserstein_metric(mes, m_zer, p_wasser=1):
+    '''Retourne la p--distance de Wasserstein partiel (Partial Gromov-
+    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    luminosité)'''
+    if p_wasser == 1:
+        M = ot.dist(mes.x, m_zer.x, metric='euclidean')
+    elif p_wasser == 2:
+        M = ot.dist(mes.x, m_zer.x)
+    else:
+        raise ValueError('Unknown p for W_p computation')
+    a = ot.unif(mes.N)
+    b = ot.unif(m_zer.N)
+    W = ot.emd2(a, b, M)
+    return W
+
+
+def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
+    if p_wasser == 1:
+        M = ot.dist(mes.x, m_zer.x, metric='euclidean')
+        return M
+    elif p_wasser == 2:
+        M = ot.dist(mes.x, m_zer.x)
+        return M
+    raise ValueError('Unknown p for W_p computation')
 
