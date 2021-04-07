@@ -8,7 +8,7 @@ and reconstructing those measures w.r.t to a provided acquistion
 """
 
 __team__ = 'Morpheme'
-__deboggage__ = True
+__deboggage__ = False
 __normalis_PSF__ = False
 
 

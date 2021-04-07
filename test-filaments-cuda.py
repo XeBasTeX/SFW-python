@@ -15,8 +15,6 @@ __saveFig__ = False
 __saveVid__ = False
 
 
-import matplotlib.pyplot as plt
-import scipy.io
 from skimage import io
 import numpy as np
 import torch

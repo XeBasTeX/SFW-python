@@ -16,8 +16,12 @@ __normalis_PSF__ = False
 
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 import ot
+import scipy
+
+from matplotlib.animation import FuncAnimation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.pyplot as plt
 
 
 # # GPU acceleration if needed
@@ -252,7 +256,7 @@ class Mesure2D:
         if amplitude is None or position is None:
             amplitude = torch.Tensor()
             position = torch.Tensor()
-        assert(len(amplitude) == len(position))
+        assert(len(amplitude) == len(position) or len(amplitude) == len(position))
         if isinstance(amplitude, torch.Tensor) and isinstance(position,
                                                               torch.Tensor):
             self.a = amplitude
@@ -476,7 +480,7 @@ class Mesure2D:
         if bruits == 'poisson':
             normalis = torch.numel(acquis)
             if obj == 'covar':
-                R_nrj = self.covariance_kernel(dom)
+                R_nrj = self.cov_kernel(dom)
                 attache = 0.5 * torch.linalg.norm(acquis - R_nrj)**2 / normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
@@ -488,7 +492,7 @@ class Mesure2D:
         elif bruits in ('gauss', 'unif'):
             normalis = torch.numel(acquis)
             if obj == 'covar':
-                R_nrj = self.covariance_kernel(dom)
+                R_nrj = self.cov_kernel(dom)
                 attache = 0.5 * torch.linalg.norm(acquis - R_nrj)**2 / normalis
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
@@ -624,7 +628,7 @@ def phi(m, dom, obj='covar'):
 
     """
     if obj == 'covar':
-        return m.covariance_kernel(dom)
+        return m.cov_kernel(dom)
     if obj == 'acquis':
         return m.kernel(dom)
     raise NameError('Unknown BLASSO target.')
@@ -663,49 +667,11 @@ def phi_vecteur(a, x, dom, obj='covar'):
     """
     if obj == 'covar':
         m_tmp = Mesure2D(a, x)
-        return m_tmp.covariance_kernel(dom)
+        return m_tmp.cov_kernel(dom)
     if obj == 'acquis':
         m_tmp = Mesure2D(a, x)
         return m_tmp.kernel(dom)
     raise TypeError('Unknown BLASSO target.')
-
-
-# def phiAdjointSimps(acquis, dom, obj='covar'):
-#     '''Hierher débugger ; taille_x et taille_y pas implémenté
-#     Partie torch à faire'''
-#     X_domain = dom.X
-#     Y_domain = dom.Y
-#     taille_y = len(X_domain)
-#     taille_x = len(X_domain[0])
-#     ech_x_square = X_domain.size
-#     ech_y_square = Y_domain.size
-#     eta = np.zeros(np.shape(X_domain))
-#     if obj == 'covar':
-#         for i in range(taille_x):
-#             for j in range(taille_y):
-#                 x_decal = X_domain[i, j]
-#                 y_decal = Y_domain[i, j]
-#                 convol = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain,
-#                                        dom.sigma)
-#                 noyau = np.outer(convol, convol)
-#                 X_range_integ = np.linspace(dom.x_gauche, dom.x_droit,
-#                                             ech_x_square)
-#                 Y_range_integ = np.linspace(dom.x_gauche, dom.x_droit,
-#                                             ech_y_square)
-#                 integ_x = integrate.trapz(acquis * noyau, x=X_range_integ)
-#                 eta[i, j] = integrate.trapz(integ_x, x=Y_range_integ)
-#         return eta
-#     if obj == 'acquis':
-#         for i in range(taille_x):
-#             for j in range(taille_y):
-#                 x_decal = X_domain[i, j]
-#                 y_decal = Y_domain[i, j]
-#                 gauss = gaussienne_2D(x_decal - X_domain, y_decal - Y_domain,
-#                                       dom.sigma)
-#                 integ_x = integrate.simps(acquis * gauss, x=dom.X_grid)
-#                 eta[i, j] = integrate.simps(integ_x, x=dom.X_grid)
-#         return eta
-#     raise TypeError
 
 
 def phiAdjoint(acquis, dom, obj='covar'):
@@ -748,16 +714,16 @@ def phiAdjoint(acquis, dom, obj='covar'):
         # eta = torch.fft.ifft2(torch.fft.fft2(lambda_vec) @\
         #                       torch.fft.fft2(acquis))
         eta = acquis
-        eta = torch.diag(torch.abs(eta)).reshape(N_ECH, N_ECH)
+        eta = torch.diag(torch.abs(eta)).reshape(N_ech, N_ech)
         return eta
     if obj == 'acquis':
-        (X_big, Y_big) = domain.big()
+        (X_big, Y_big) = dom.big()
         h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
         h_ker = h_vec.reshape(1, 1, N_ech*2-1 , N_ech*2-1)
-        y_arr = y_bar.reshape(1, 1, N_ech , N_ech)
+        y_arr = acquis.reshape(1, 1, N_ech , N_ech)
         eta = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
         eta = torch.squeeze(eta)
-        return eta
+        return acquis
     raise TypeError
 
 
@@ -869,103 +835,6 @@ def covariance_pile(stack):
     return 1/(stack_re.shape[0]-1) * stack_re.T @ stack_re
 
 
-
-
-
-
-
-
-N_ECH = 32
-X_GAUCHE = 0
-X_DROIT = 1
-FWMH = 2.2875 / N_ECH
-SIGMA = 0.15
-domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
-
-a = torch.Tensor([1,2])
-x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
-x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
-
-m = Mesure2D(a,x)
-m2 = Mesure2D(a,x2)
-
-plt.imshow(m.kernel(domain), extent=[0,1,1,0])
-plt.title('$\Phi(m)$', fontsize=28)
-plt.colorbar()
-
-plt.figure()
-plt.imshow(m.cov_kernel(domain), extent=[0,1,1,0])
-plt.colorbar()
-plt.title('$\Lambda(m)$', fontsize=28)
-
-
-FOND = 0.0
-SIGMA_BRUITS = 0.000001e-1
-TYPE_BRUITS = 'gauss'
-
-
-bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
-
-T_ECH = 50
-pile = pile_aquisition(m, domain, bruits_t, T_ECH)
-y_bar = pile.mean(0)
-cov_pile = covariance_pile(pile)
-
-plt.figure()
-plt.scatter(x[:,0], x[:,1])
-plt.imshow(cov_pile)
-plt.colorbar()
-plt.title('$R_y$', fontsize=28)
-
-
-
-
-
-
-
-
-# # Calcul certificat P_\lambda
-# (X_big, Y_big) = domain.big()
-# h_vec = gaussienne_2D(X_big, Y_big, SIGMA, undivide=__normalis_PSF__)
-# h_ker = h_vec.reshape(1, 1, N_ECH*2-1 , N_ECH*2-1)
-# y_arr = y_bar.reshape(1, 1, N_ECH , N_ECH)
-# etas = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
-# etap = torch.flip(torch.squeeze(etas), [0, 1])
-
-# plt.figure()
-# plt.imshow(etap, extent=[0,1,1,0])
-# plt.colorbar()
-# plt.title('$\eta_\lambda^{\mathcal{P}}$', fontsize=28)
-
-
-# # # Calcul certificat Q_\lambda
-# # (X_big, Y_big) = domain.biggy()
-# # h_vec = gaussienne_2D(X_big, Y_big, SIGMA,
-# #                       undivide=__normalis_PSF__).reshape(-1).cuda()
-# # lambda_vec = torch.outer(h_vec, h_vec)[:-1,:-1]
-# # h_ker = lambda_vec.reshape(1, 1, 4*N_ECH**2 -1 , 4*N_ECH**2-1)
-# # R_y_arr = cov_pile.reshape(1, 1, N_ECH**2 , N_ECH**2).cuda()
-# # eta = torch.nn.functional.conv2d(h_ker, R_y_arr, stride=1)
-# # eta = torch.diagonal(torch.squeeze(eta)).cpu()
-# # plt.imshow(eta.reshape(N_ECH, N_ECH))
-
-
-# (Xt, Yt) = domain.reverse()
-# h_vec = gaussienne_2D(Xt, Yt, SIGMA, undivide=__normalis_PSF__).reshape(-1)
-# lambda_vec = torch.outer(h_vec, h_vec)
-# R_y_arr = cov_pile
-# eta = R_y_arr
-# output = torch.diag(torch.abs(eta)).reshape(N_ECH, N_ECH)
-
-# plt.figure()
-# plt.imshow(output, extent=[0,1,1,0])
-# plt.colorbar()
-# plt.title('$\eta_\lambda^{\mathcal{Q}}$', fontsize=28)
-
-
-
-
-
 def unravel_index(indices, shape):
     r"""Converts flat indices into unraveled coordinates in a target shape.
 
@@ -987,7 +856,8 @@ def unravel_index(indices, shape):
         coord[..., i] = indices % dim
         indices = indices // dim
 
-    return coord.flip(-1)
+    coord_tensor = coord.flip(-1)
+    return (coord_tensor.tolist()[0], coord_tensor.tolist()[1])
 
 
 # Le fameux algo de Sliding Frank Wolfe
@@ -999,14 +869,14 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     Si l'objectif est la covariance :
 
     .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) = \\
-        \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2. \\
+        \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2_2. \\
             \quad (\mathcal{Q}_\lambda (y))
 
     Si l'objectif est la moyenne :
 
     .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) = \\
         \lambda |m|(\mathcal{X}) + \\
-            \dfrac{1}{2} ||\overline{y} - \Phi (m)||^2.\\
+            \dfrac{1}{2} ||\overline{y} - \Phi (m)||^2_2.\\
                 \quad (\mathcal{P}_\lambda (\overline{y}))
 
 
@@ -1078,9 +948,10 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
         certif_abs = torch.abs(eta_V_k)
         x_star_index = unravel_index(certif_abs.argmax(), eta_V_k.shape)
-        x_star = x_star_index / N_ech_y # passer de l'idx à xstar
+        x_star_tuple = tuple(s / N_ech_y for s in x_star_index) # passer de l'idx à xstar
+        x_star = torch.tensor(x_star_tuple).reshape(1,2)
         if printInline:
-            print(fr'* x^* index {x_star} max ' +
+            print(fr'* x^* index {x_star_tuple} max ' +
                   fr'à {certif_abs[x_star_index]:.2f}')
 
         # Condition d'arrêt (étape 4)
@@ -1095,48 +966,34 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
         # Création du x positions estimées
         mesure_k_demi = Mesure2D()
-        if x_k.size == 0:
-            x_k_demi = torch.vstack(x_star)
-            lasso_guess = torch.ones(Nk+1)
+        if not x_k.numel():
+            x_k_demi = x_star
+            a_param = torch.ones(Nk+1, dtype=torch.float, requires_grad=True)
         else:
-            x_k_demi = torch.vstack(x_k, x_star)
-            lasso_guess = torch.cat((a_k, [1.0]))
+            x_k_demi = torch.cat((x_k, x_star))
+            uno = torch.tensor([1.0], dtype=torch.float)
+            a_param = torch.cat((a_k, uno))      
+            a_param.requires_grad=True
 
-        # On résout LASSO (étape 7)
-        def lasso(aa):
-            difference = acquis - phi_vecteur(aa, x_k_demi, dom, obj)
-            attache = 0.5*np.linalg.norm(difference)**2/N_grille
-            parcimonie = regul*np.linalg.norm(aa, 1)
-            return attache + parcimonie
-
-        def grad_lasso(params):
-            aa = params
-            xx = x_k_demi
-            N = len(aa)
-            partial_a = N*[0]
-            residual = acquis - phi_vecteur(aa, xx, dom, obj)
-            if obj == 'covar':
-                for i in range(N):
-                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1],
-                                          dom.sigma)
-                    cov_gauss = np.outer(gauss, gauss)
-                    normalis = dom.N_ech**4
-                    partial_a[i] = regul - np.sum(cov_gauss*residual)/normalis
-                return partial_a
-            elif obj == 'acquis':
-                for i in range(N):
-                    gauss = gaussienne_2D(dom.X - xx[i, 0], dom.Y - xx[i, 1],
-                                          dom.sigma)
-                    normalis = dom.N_ech**2
-                    partial_a[i] = regul - np.sum(gauss*residual)/normalis
-                return partial_a
-            else:
-                raise TypeError('Unknown BLASSO target.')
-
-        res = scipy.optimize.minimize(lasso, lasso_guess,
-                                      jac=grad_lasso,
-                                      options={'disp': __deboggage__})
-        a_k_demi = res.x
+        # On résout LASSO (étape 7)        
+        mse_loss = torch.nn.MSELoss(reduction='sum')
+        optimizer = torch.optim.LBFGS([a_param], lr=1)
+        alpha = regul
+        n_epoch = 10
+        
+        for epoch in range(n_epoch):
+            def closure():
+                optimizer.zero_grad()
+                outputs = phi_vecteur(a_param, x_k_demi, dom, obj)
+                loss = 0.5 * mse_loss(acquis, outputs)
+                
+                loss += alpha * a_param.abs().sum()
+                loss.backward()
+                return loss
+        
+            optimizer.step(closure)
+            
+        a_k_demi = a_param.detach().clone() # pour ne pas copier l'arbre
 
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
         # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
@@ -1145,81 +1002,30 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
-        def lasso_double(params):
-            a_p = params[:int(len(params)/3)]
-            x_p = params[int(len(params)/3):]
-            x_p = x_p.reshape((len(a_p), 2))
-            attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a_p, x_p, dom,
-                                                              obj))**2/N_grille
-            parcimonie = regul*np.linalg.norm(a_p, 1)
-            return attache + parcimonie
 
-        def grad_lasso_double(params):
-            a_p = params[:int(len(params)/3)]
-            x_p = params[int(len(params)/3):]
-            x_p = x_p.reshape((len(a_p), 2))
-            N = len(a_p)
-            partial_a = N*[0]
-            partial_x = 2*N*[0]
-            residual = acquis - phi_vecteur(a_p, x_p, dom, obj)
-            if obj == 'covar':
-                for i in range(N):
-                    gauss = gaussienne_2D(dom.X - x_p[i, 0], dom.Y - x_p[i, 1],
-                                          dom.sigma)
-                    cov_gauss = np.outer(gauss, gauss)
-                    partial_a[i] = regul - np.sum(cov_gauss*residual)/N_grille
+        param = torch.cat((a_k_demi, x_k_demi.reshape(-1)))
+        param.requires_grad = True 
+        
+        mse_loss = torch.nn.MSELoss(reduction='sum')
+        optimizer = torch.optim.Adam([param])
+        alpha = regul
+        n_epoch = 20
+        
+        for epoch in range(n_epoch):
+            def closure():
+                optimizer.zero_grad()
+                x_tmp = param[Nk+1:].reshape(Nk+1, 2)
+                fidelity = phi_vecteur(param[:Nk+1], x_tmp, dom, obj)
+                loss = 0.5 * mse_loss(acquis, fidelity)
+                
+                loss += alpha * param[:1].abs().sum()
+                loss.backward()
+                return loss
+        
+            optimizer.step(closure)
 
-                    gauss_der_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
-                                                       dom.Y - x_p[i, 1],
-                                                       dom.X - x_p[i, 0],
-                                                       dom.sigma)
-                    cov_der_x = np.outer(gauss_der_x, gauss)
-                    partial_x[2*i] = 2*a_p[i] * \
-                        np.sum(cov_der_x*residual) / (N_grille)
-                    gauss_der_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
-                                                       dom.Y - x_p[i, 1],
-                                                       dom.Y - x_p[i, 1],
-                                                       dom.sigma)
-                    cov_der_y = np.outer(gauss_der_y, gauss)
-                    partial_x[2*i+1] = 2*a_p[i] * \
-                        np.sum(cov_der_y*residual) / (N_grille)
-
-                return(partial_a + partial_x)
-            elif obj == 'acquis':
-                for i in range(N):
-                    integ = np.sum(residual*gaussienne_2D(dom.X - x_p[i, 0],
-                                                          dom.Y - x_p[i, 1],
-                                                          dom.sigma))
-                    partial_a[i] = regul - integ/N_grille
-
-                    grad_gauss_x = grad_x_gaussienne_2D(dom.X - x_p[i, 0],
-                                                        dom.Y - x_p[i, 1],
-                                                        dom.X - x_p[i, 0],
-                                                        dom.sigma)
-                    integ_x = np.sum(residual*grad_gauss_x) / (N_grille)
-                    partial_x[2*i] = a_p[i] * integ_x
-                    grad_gauss_y = grad_y_gaussienne_2D(dom.X - x_p[i, 0],
-                                                        dom.Y - x_p[i, 1],
-                                                        dom.Y - x_p[i, 1],
-                                                        dom.sigma)
-                    integ_y = np.sum(residual*grad_gauss_y) / (N_grille)
-                    partial_x[2*i+1] = a_p[i] * integ_y
-
-                return(partial_a + partial_x)
-            else:
-                raise TypeError('Unknown BLASSO target.')
-
-        # On met la graine au format array pour scipy...minimize
-        # il faut en effet que ça soit un vecteur
-        initial_guess = np.append(a_k_demi, np.reshape(x_k_demi, -1))
-        a_part = list(zip([0]*(Nk+1), [10000]*(Nk+1)))
-        x_part = list(zip([0]*2*(Nk+1), [1.001]*2*(Nk+1)))
-        bounds_bfgs = a_part + x_part
-        tes = scipy.optimize.minimize(lasso_double, initial_guess,
-                                       bounds=bounds_bfgs,
-                                      options={'disp': True})
-        a_k_plus = (tes.x[:int(len(tes.x)/3)])
-        x_k_plus = (tes.x[int(len(tes.x)/3):]).reshape((len(a_k_plus), 2))
+        a_k_plus = param[:int(len(param)/3)].detach().clone()
+        x_k_plus = param[int(len(param)/3):].detach().clone().reshape(Nk+1, 2)
         # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
         # print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
 
@@ -1261,43 +1067,6 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     return(mesure_k, nrj_vecteur)
 
 
-
-
-# https://stackoverflow.com/questions/50621786/lbfgs-never-converges-in-large-dimensions-in-pytorch
-# Optim : https://discuss.pytorch.org/t/use-pytorch-optimizer-to-minimize-a-user-function/66712/8
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def wasserstein_metric(mes, m_zer, p_wasser=1):
     '''Retourne la p--distance de Wasserstein partiel (Partial Gromov-
     Wasserstein) pour des poids égaux (pas de prise en compte de la 
@@ -1322,4 +1091,625 @@ def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
         M = ot.dist(mes.x, m_zer.x)
         return M
     raise ValueError('Unknown p for W_p computation')
+
+
+# # Biblio :
+# # https://stackoverflow.com/questions/50621786/lbfgs-never-converges-in-large-dimensions-in-pytorch
+# # Optim : https://discuss.pytorch.org/t/use-pytorch-optimizer-to-minimize-a-user-function/66712/8
+# # https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003833
+# https://jhui.github.io/2018/02/09/PyTorch-Variables-functionals-and-Autograd/
+# https://discuss.pytorch.org/t/nn-l1loss-vs-sklearns-l1-loss-different-optimization-results/66136/2
+# https://stackoverflow.com/questions/50621786/lbfgs-never-converges-in-large-dimensions-in-pytorch
+
+def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
+                 saveFig=False, obj='covar'):
+    '''Affiche tous les graphes importants pour la mesure m'''
+    if m.a.size > 0:
+        fig = plt.figure(figsize=(15, 12))
+        # fig = plt.figure(figsize=(13,10))
+        # type_de_bruits = bruits.type
+        # niveau_bruits = bruits.niveau
+        # fig.suptitle(fr'Reconstruction en bruits {type_de_bruits} ' +
+        #              fr'pour $\lambda = {lambda_regul:.0e}$ ' +
+        #              fr'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
+        diss = wasserstein_metric(m, m_zer)
+        fig.suptitle(f'Reconstruction {obj} : ' +
+                     r'$\mathcal{{W}}_1(m, m_{a_0,x_0})$' +
+                     f' = {diss:.3f}', fontsize=22)
+
+        plt.subplot(221)
+        cont1 = plt.contourf(dom.X, dom.Y, y, 100, cmap='gray')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
+        plt.colorbar()
+        plt.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                    label='GT spikes')
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+',
+                    label='Recovered spikes')
+        plt.legend()
+
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
+
+        plt.subplot(222)
+        super_dom = dom.super_resolve(q)
+        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+                             100, cmap='gray')
+        for c in cont2.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        if obj == 'covar':
+            plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
+                      f'with N = {m.N}', fontsize=20)
+        plt.colorbar()
+
+        plt.subplot(223)
+        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='gray')
+        for c in cont3.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Certificate $\eta_\lambda$', fontsize=20)
+        plt.colorbar()
+
+        plt.subplot(224)
+        plt.plot(nrj, 'o--', color='black', linewidth=2.5)
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+        plt.xlabel('Itération', fontsize=18)
+        plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
+        if obj == 'covar':
+            plt.title(r'BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'BLASSO energy $\mathcal{P}_\lambda(\overline{y})$',
+                      fontsize=20)
+        plt.grid()
+
+        if title is None:
+            title = 'fig/covar-certificat-2d.pdf'
+        elif isinstance(title, str):
+            title = 'fig/' + title + '.pdf'
+        else:
+            raise TypeError("You ought to give a str type name for the plot")
+        if saveFig:
+            plt.savefig(title, format='pdf', dpi=1000,
+                        bbox_inches='tight', pad_inches=0.03)
+
+
+def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
+                      saveFig=False, obj='covar'):
+    '''Affiche tous les graphes importants pour la mesure m'''
+    if m.a.numel() > 0:
+        fig = plt.figure(figsize=(15, 12))
+        # fig = plt.figure(figsize=(13,10))
+        # type_de_bruits = bruits.type
+        # niveau_bruits = bruits.niveau
+        # fig.suptitle(fr'Reconstruction en bruits {type_de_bruits} ' +
+        #              fr'pour $\lambda = {lambda_regul:.0e}$ ' +
+        #              fr'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
+        fig.suptitle(f'Reconstruction {obj}', fontsize=22)
+
+        plt.subplot(221)
+        cont1 = plt.contourf(dom.X, dom.Y, acquis, 100, cmap='gray')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
+        plt.colorbar()
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
+                    label='Recovered spikes')
+        plt.legend()
+
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
+
+        plt.subplot(222)
+        super_dom = dom.super_resolve(q)
+        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+                             100, cmap='gray')
+        for c in cont2.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        if obj == 'covar':
+            plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        plt.colorbar()
+
+        plt.subplot(223)
+        cont3 = plt.contourf(dom.X, dom.Y, certif, 100, cmap='gray')
+        for c in cont3.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Certificate $\eta_\lambda$', fontsize=20)
+        plt.colorbar()
+
+        plt.subplot(224)
+        plt.plot(nrj, 'o--', color='black', linewidth=2.5)
+        plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
+        plt.xlabel('Itération', fontsize=18)
+        plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
+        if obj == 'covar':
+            plt.title(r'BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'BLASSO energy $\mathcal{P}_\lambda(\overline{y})$',
+                      fontsize=20)
+        plt.grid()
+
+        if title is None:
+            title = 'fig/experimentals.pdf'
+        elif isinstance(title, str):
+            title = 'fig/' + title + '.pdf'
+        else:
+            raise TypeError("You ought to give a str type name for the plot")
+        if saveFig:
+            plt.savefig(title, format='pdf', dpi=1000,
+                        bbox_inches='tight', pad_inches=0.03)
+
+
+def plot_reconstruction(m, dom, acquis, q=4, title=None, saveFig=False,
+                        obj='covar'):
+    '''Affiche que 2 graphes importants pour la mesure m'''
+    if m.a.size > 0:
+        fig = plt.figure(figsize=(15, 6))
+        fig.suptitle(f'Reconstruction {obj}', fontsize=22)
+
+        plt.subplot(121)
+        cont1 = plt.contourf(dom.X, dom.Y, acquis, 100, cmap='gray')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
+        plt.colorbar()
+        plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
+                    label='Recovered spikes')
+        plt.legend()
+
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        plt.title(r'Temporal mean $\overline{y}$', fontsize=20)
+
+        plt.subplot(122)
+        super_dom = dom.super_resolve(q)
+        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+                             100, cmap='gray')
+        for c in cont2.collections:
+            c.set_edgecolor("face")
+        plt.xlabel('X', fontsize=18)
+        plt.ylabel('Y', fontsize=18)
+        if obj == 'covar':
+            plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        elif obj == 'acquis':
+            plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
+                      f'à N = {m.N}', fontsize=20)
+        plt.colorbar()
+        if title is None:
+            title = 'fig/experimentals.pdf'
+        elif isinstance(title, str):
+            title = 'fig/' + title + '.pdf'
+        else:
+            raise TypeError("You ought to give a str type name for the plot")
+        if saveFig:
+            plt.savefig(title, format='pdf', dpi=1000,
+                        bbox_inches='tight', pad_inches=0.03)
+
+
+def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
+    '''Hierher à terminer de débogger'''
+    # ax, fig = plt.subplots(figsize=(10,10))
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    # ax.set(xlim=(0, 1), ylim=(0, 1))
+    cont_pile = ax.contourf(dom.X, dom.Y, y_moy, 100, cmap='seismic')
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont_pile, cax=cax)
+    # plt.tight_layout()
+
+    def animate(k):
+        if k >= len(pile_acquis):
+            # On fige l'animation pour faire une pause à la fin
+            return
+        ax.clear()
+        ax.set_aspect('equal', adjustable='box')
+        ax.contourf(dom.X, dom.Y, pile_acquis[k, :], 100, cmap='seismic')
+        ax.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                   s=2*dom.N_ech, label='GT spikes')
+        ax.set_xlabel('X', fontsize=25)
+        ax.set_ylabel('Y', fontsize=25)
+        ax.set_title(f'Acquisition numéro = {k}', fontsize=30)
+        # ax.legend(loc=1, fontsize=20)
+        # ax.tight_layout()
+
+    anim = FuncAnimation(fig, animate, interval=400, frames=len(pile_acquis)+3,
+                         blit=False)
+
+    plt.draw()
+
+    if title is None:
+        title = 'fig/anim/anim-pile-2d'
+    elif isinstance(title, str):
+        title = 'fig/anim/' + title
+    else:
+        raise TypeError("You ought to give a str type name for the video file")
+
+    if video == "mp4":
+        anim.save(title + '.mp4')
+    elif video == "gif":
+        anim.save(title + '.gif')
+    else:
+        raise ValueError('Unknown video format')
+    return fig
+
+
+def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif', title=None):
+    '''Montre comment la fonction SFW ajoute ses Dirac'''
+    fig = plt.figure(figsize=(20, 10))
+
+    ax1 = fig.add_subplot(121)
+    ax1.set_aspect('equal', adjustable='box')
+    cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont, cax=cax)
+    ax1.set_xlabel('X', fontsize=25)
+    ax1.set_ylabel('Y', fontsize=25)
+    ax1.set_title(r'Moyenne $\overline{y}$', fontsize=35)
+
+    ax2 = fig.add_subplot(122)
+    # ax2.set(xlim=(0, 1), ylim=(0, 1))
+    cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    divider = make_axes_locatable(ax2)
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont_sfw, cax=cax)
+    ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                s=dom.N_ech, label='Hidden spikes')
+    ax2.scatter(m_list[0].x[:, 0], m_list[0].x[:, 1], marker='+',
+                s=2*dom.N_ech, c='g', label='Recovered spikes')
+    ax2.legend(loc=1, fontsize=20)
+    plt.tight_layout()
+
+    def animate(k):
+        if k >= len(m_list):
+            # On fige l'animation pour faire une pause à la pause
+            return
+        ax2.clear()
+        ax2.set_aspect('equal', adjustable='box')
+        ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
+                     cmap='seismic')
+        ax2.scatter(m_zer.x[:, 0], m_zer.x[:, 1], marker='x',
+                    s=4*dom.N_ech, label='GT spikes')
+        ax2.scatter(m_list[k].x[:, 0], m_list[k].x[:, 1], marker='+',
+                    s=8*dom.N_ech, c='g', label='Recovered spikes')
+        ax2.set_xlabel('X', fontsize=25)
+        ax2.set_ylabel('Y', fontsize=25)
+        ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
+        ax2.legend(loc=1, fontsize=20)
+        plt.tight_layout()
+
+    anim = FuncAnimation(fig, animate, interval=step, frames=len(m_list)+3,
+                         blit=False)
+
+    plt.draw()
+
+    if title is None:
+        title = 'fig/anim/anim-sfw-covar-2d'
+    elif isinstance(title, str):
+        title = 'fig/anim/' + title
+    else:
+        raise TypeError("You ought to give a str type name for the video file")
+
+    if video == "mp4":
+        anim.save(title + '.mp4')
+    elif video == "gif":
+        anim.save(title + '.gif')
+    else:
+        raise ValueError('Unknown video format')
+    return fig
+
+
+def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif', 
+                     title=None):
+    '''Montre comment la fonction SFW ajoute ses Dirac'''
+    fig = plt.figure(figsize=(20, 10))
+
+    ax1 = fig.add_subplot(121)
+    ax1.set_aspect('equal', adjustable='box')
+    # cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    cont = ax1.imshow(acquis, cmap='seismic')
+    divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont, cax=cax)
+    ax1.set_xlabel('X', fontsize=25)
+    ax1.set_ylabel('Y', fontsize=25)
+    ax1.set_title(r'Temporal mean $\overline{y}$', fontsize=35)
+
+    ax2 = fig.add_subplot(122)
+    # cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    cont_sfw = ax2.imshow(acquis, cmap='seismic')
+    divider = make_axes_locatable(ax2)
+    cax = divider.append_axes("right", size="5%", pad=0.15)
+    fig.colorbar(cont_sfw, cax=cax)
+    # ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
+    ax2.imshow(acquis, cmap='seismic')
+    if cross:
+        taille = dom.N_ech
+        ax2.scatter(taille*m_list[0].x[:, 0], taille*m_list[0].x[:, 1], 
+                    marker='+', s=2*dom.N_ech, c='g',
+                    label='Recovered spikes')
+        ax2.legend(loc=1, fontsize=20)
+    plt.tight_layout()
+
+    def animate(k):
+        if k >= len(m_list):
+            # On fige l'animation pour faire une pause à la pause
+            return
+        ax2.clear()
+        ax2.set_aspect('equal', adjustable='box')
+        # ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
+        #              cmap='seismic')
+        ax2.imshow(m_list[k].kernel(dom), cmap='seismic')
+        if cross:
+            ax2.scatter(taille*m_list[k].x[:, 0], taille*m_list[k].x[:, 1], 
+                        marker='+', s=2*dom.N_ech, c='g', 
+                        label='Recovered spikes')
+            ax2.legend(loc=1, fontsize=20)
+        ax2.set_xlabel('X', fontsize=25)
+        ax2.set_ylabel('Y', fontsize=25)
+        ax2.set_title(f'Reconstruction at iterate {k}', fontsize=35)
+        plt.tight_layout()
+
+    anim = FuncAnimation(fig, animate, interval=step, frames=len(m_list)+3,
+                         blit=False)
+
+    plt.draw()
+
+    if title is None:
+        title = 'fig/anim/anim-sfw-covar-2d'
+    elif isinstance(title, str):
+        title = 'fig/anim/' + title
+    else:
+        raise TypeError("You ought to give a str type name for the video file")
+
+    if video == "mp4":
+        anim.save(title + '.mp4')
+    elif video == "gif":
+        anim.save(title + '.gif')
+    else:
+        raise ValueError('Unknown video format')
+    return fig
+
+
+def compare_covariance(m, covariance, dom, saveFig=True):
+    fig = plt.figure(figsize=(12, 4))
+    ax1 = fig.add_subplot(121)
+    lambada = ax1.imshow(m.covariance_kernel(dom))
+    fig.colorbar(lambada)
+    ax1.set_title(r'$\Lambda(m_{M,x})$', fontsize=40)
+    ax2 = fig.add_subplot(122)
+    ax2.imshow(covariance)
+    fig.colorbar(lambada)
+    ax2.set_title(r'$R_y$', fontsize=40)
+    if saveFig:
+        plt.savefig('fig/R_x-R_y-filaments.pdf', format='pdf', dpi=1000,
+                    bbox_inches='tight', pad_inches=0.03)
+
+def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
+    plt.scatter(m_ax0.x[0:-1:reduc, 0], 1 - m_ax0.x[0:-1:reduc, 1],
+                marker='x', s=0.001)
+    plt.title('Ground-truth position of ẟ-peaks', fontsize=20)
+    plt.xlabel('x', fontsize=20)
+    plt.ylabel('y', fontsize=20)
+    if saveFig:
+        plt.savefig('fig/gt.pdf', format='pdf', dpi=1000,
+                    bbox_inches='tight', pad_inches=0.03)
+
+
+
+
+
+N_ECH = 32
+X_GAUCHE = 0
+X_DROIT = 1
+FWMH = 2.2875 / N_ECH
+SIGMA = 0.10
+domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
+
+a = torch.Tensor([1,2])
+x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
+x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
+
+m = Mesure2D(a,x)
+m2 = Mesure2D(a,x2)
+
+# plt.imshow(m.kernel(domain), extent=[0,1,1,0])
+# plt.title('$\Phi(m)$', fontsize=28)
+# plt.colorbar()
+
+# plt.figure()
+# plt.imshow(m.cov_kernel(domain), extent=[0,1,1,0])
+# plt.colorbar()
+# plt.title('$\Lambda(m)$', fontsize=28)
+
+
+FOND = 0.0
+SIGMA_BRUITS = 0.000001e-1
+TYPE_BRUITS = 'gauss'
+bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
+
+
+T_ECH = 50
+pile = pile_aquisition(m, domain, bruits_t, T_ECH)
+y_bar = pile.mean(0)
+cov_pile = covariance_pile(pile)
+R_y = cov_pile
+
+# plt.figure()
+# plt.scatter(x[:,0], x[:,1])
+# plt.imshow(cov_pile)
+# plt.colorbar()
+# plt.title('$R_y$', fontsize=28)
+
+
+lambda_cov = 1e-5
+lambda_moy = 1e-5
+iteration = 2
+
+(m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_cov,
+                                         nIter=iteration, mesParIter=True,
+                                         obj='covar', printInline=True)
+
+(m_moy, nrj_moy, mes_moy) = SFW(y_bar , domain,
+                                regul=lambda_moy,
+                                nIter=iteration, mesParIter=True,
+                                obj='acquis', printInline=True)
+
+
+print(f'm_moy : {m_moy.N} Diracs')
+print(m_moy)
+
+if m_cov.N > 0:
+    certificat_V_cov = etak(m_cov, R_y, domain, lambda_cov,
+                                     obj='covar')
+    plot_experimental(m_cov, domain, y_bar, nrj_cov,
+                               certificat_V_cov, obj='covar')
+if m_moy.N > 0:
+    certificat_V_moy = etak(m_moy, y_bar, domain, lambda_moy,
+                                     obj='acquis')
+    plot_experimental(m_moy, domain, y_bar, nrj_moy,
+                               certificat_V_moy, obj='acquis')
+
+
+
+
+
+# # Calcul certificat P_\lambda
+# (X_big, Y_big) = domain.big()
+# h_vec = gaussienne_2D(X_big, Y_big, SIGMA, undivide=__normalis_PSF__)
+# h_ker = h_vec.reshape(1, 1, N_ECH*2-1 , N_ECH*2-1)
+# y_arr = y_bar.reshape(1, 1, N_ECH , N_ECH)
+# etas = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
+# etap = torch.flip(torch.squeeze(etas), [0, 1])
+
+# plt.figure()
+# plt.imshow(etap, extent=[0,1,1,0])
+# plt.colorbar()
+# plt.title('$\eta_\lambda^{\mathcal{P}}$', fontsize=28)
+
+
+# # # Calcul certificat Q_\lambda
+# # (X_big, Y_big) = domain.biggy()
+# # h_vec = gaussienne_2D(X_big, Y_big, SIGMA,
+# #                       undivide=__normalis_PSF__).reshape(-1).cuda()
+# # lambda_vec = torch.outer(h_vec, h_vec)[:-1,:-1]
+# # h_ker = lambda_vec.reshape(1, 1, 4*N_ECH**2 -1 , 4*N_ECH**2-1)
+# # R_y_arr = cov_pile.reshape(1, 1, N_ECH**2 , N_ECH**2).cuda()
+# # eta = torch.nn.functional.conv2d(h_ker, R_y_arr, stride=1)
+# # eta = torch.diagonal(torch.squeeze(eta)).cpu()
+# # plt.imshow(eta.reshape(N_ECH, N_ECH))
+
+
+# (Xt, Yt) = domain.reverse()
+# h_vec = gaussienne_2D(Xt, Yt, SIGMA, undivide=__normalis_PSF__).reshape(-1)
+# lambda_vec = torch.outer(h_vec, h_vec)
+# R_y_arr = cov_pile
+# eta = R_y_arr
+# output = torch.diag(torch.abs(eta)).reshape(N_ECH, N_ECH)
+
+# plt.figure()
+# plt.imshow(output, extent=[0,1,1,0])
+# plt.colorbar()
+# plt.title('$\eta_\lambda^{\mathcal{Q}}$', fontsize=28)
+
+
+
+
+
+# #%% Etape 7
+
+
+# x_k_demi = torch.tensor([[0.1,0.2], [0.3,0.2]])
+# a_k_demi = torch.tensor([1, 4.56])
+# m_tmp = Mesure2D(a_k_demi, x_k_demi)
+# acquis = m_tmp.kernel(domain)
+# # acquis = m_tmp.cov_kernel(domain)
+
+# N_grille = acquis.numel()
+# regul = 1e-5
+
+
+# a_param = torch.tensor([3,3], dtype=torch.float, requires_grad=True)
+
+# mse_loss = torch.nn.MSELoss(reduction='sum')
+# optimizer = torch.optim.LBFGS([a_param], lr=1)
+# alpha = regul
+# n_epoch = 10
+
+# for epoch in range(n_epoch):
+#     def closure():
+#         optimizer.zero_grad()
+#         outputs = phi_vecteur(a_param, x_k_demi, domain, obj='acquis')
+#         loss = 0.5 * mse_loss(acquis, outputs)
+        
+#         loss += alpha * a_param.abs().sum()
+#         loss.backward()
+#         return loss
+
+#     optimizer.step(closure)
+    
+# print(a_param)
+
+
+
+# #%% Etape 8
+
+# a_k_demi = torch.tensor([1])
+# x_k_demi = torch.tensor([[0.1,0.2]])
+
+# m_tmp = Mesure2D(a_k_demi, x_k_demi)
+# acquis = m_tmp.kernel(domain)
+# acquis = m_tmp.cov_kernel(domain)
+
+
+# N_grille = acquis.numel()
+# regul = 1e-5
+
+
+# a_param = torch.tensor([1.3], dtype=torch.float)
+# x_param = torch.tensor([[0.085, 0.21]], dtype=torch.float)
+
+# param = torch.cat((a_param, x_param.reshape(-1)))
+# param.requires_grad = True 
+
+# with torch.no_grad():
+#     param[1:] = param[1:].clamp(0, +1)
+
+# mse_loss = torch.nn.MSELoss(reduction='sum')
+# optimizer = torch.optim.Adam([param])
+# alpha = regul
+# n_epoch = 10
+
+# for epoch in range(n_epoch):
+#     def closure():
+#         optimizer.zero_grad()
+#         x_tmp = param[1:].reshape(1,2)
+#         fidelity = phi_vecteur(param[:1], x_tmp, domain, obj='covar')
+#         loss = 0.5 * mse_loss(acquis, fidelity)
+        
+#         loss += alpha * param[:1].abs().sum()
+#         loss.backward()
+#         return loss
+
+#     optimizer.step(closure)
+    
+# print(param)
+
+
 

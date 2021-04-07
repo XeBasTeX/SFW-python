@@ -61,7 +61,7 @@ q = 2**3
 super_domain = domain.super_resolve(q)
 
 
-iteration = 100
+iteration = 20
 lambda_cov = 1e-7
 lambda_moy = 1e-4  # s'arrête à 103 Diracs
 
