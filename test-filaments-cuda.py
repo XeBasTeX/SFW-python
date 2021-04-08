@@ -25,9 +25,6 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 import cudavenant
 
 
-# Initialiser torch
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print("[Cudavenant] Using {} device".format(device))
 
 # Charger pile et cumulants
 stream = io.imread('sofi_filaments/tubulin_noiseless_lowBg.tif')

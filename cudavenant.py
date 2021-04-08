@@ -27,6 +27,9 @@ import matplotlib.pyplot as plt
 # # GPU acceleration if needed
 # # Currently ONLY on CPU, you might want to put cudavenant in GPU also
 # dtype = torch.cuda.float if torch.cuda.is_available() else torch.float
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print("[Cudavenant] Using {} device".format(device))
+
 
 
 def sum_normalis(X_domain, Y_domain, sigma_g):
@@ -150,17 +153,18 @@ def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
 
 
 class Domain2D:
-    def __init__(self, gauche, droit, ech, sigma_psf):
+    def __init__(self, gauche, droit, ech, sigma_psf, dev='cpu'):
         '''Hierher ne marche que pour des grilles carrées'''
         grille = torch.linspace(gauche, droit, ech)
         X_domain, Y_domain = torch.meshgrid(grille, grille)
         self.x_gauche = gauche
         self.x_droit = droit
         self.N_ech = ech
-        self.X_grid = grille
-        self.X = X_domain
-        self.Y = Y_domain
+        self.X_grid = grille.to(dev)
+        self.X = X_domain.to(dev)
+        self.Y = Y_domain.to(dev)
         self.sigma = sigma_psf
+        self.dev = dev
 
     def get_domain(self):
         return(self.X, self.Y)
@@ -191,7 +195,7 @@ class Domain2D:
 
         """
         grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
-                               2*self.N_ech - 1)
+                               2*self.N_ech - 1).to(device)
         X_big, Y_big = torch.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
 
@@ -235,7 +239,8 @@ class Domain2D:
 
     def super_resolve(self, q=4):
         super_N_ech = q * self.N_ech
-        return Domain2D(self.x_gauche, self.x_droit, super_N_ech, self.sigma)
+        return Domain2D(self.x_gauche, self.x_droit, super_N_ech, self.sigma,
+                        dev=self.dev)
 
 
 class Bruits:
@@ -252,19 +257,19 @@ class Bruits:
 
 
 class Mesure2D:
-    def __init__(self, amplitude=None, position=None):
+    def __init__(self, amplitude=None, position=None, dev='cpu'):
         if amplitude is None or position is None:
-            amplitude = torch.Tensor()
-            position = torch.Tensor()
+            amplitude = torch.Tensor().to(dev)
+            position = torch.Tensor().to(dev)
         assert(len(amplitude) == len(position) or len(amplitude) == len(position))
         if isinstance(amplitude, torch.Tensor) and isinstance(position,
                                                               torch.Tensor):
-            self.a = amplitude
-            self.x = position
+            self.a = amplitude.to(dev)
+            self.x = position.to(dev)
         elif isinstance(amplitude, np.ndarray) and isinstance(position,
                                                             np.ndarray):
-            self.a = torch.from_numpy(amplitude)
-            self.x = torch.from_numpy(position)
+            self.a = torch.from_numpy(amplitude).to(dev)
+            self.x = torch.from_numpy(position).to(dev)
         else:
             raise TypeError("Gros chien de la casse formate ta bouse")
         self.N = len(amplitude)
@@ -291,7 +296,11 @@ class Mesure2D:
         return(f"{self.N} Diracs \nAmplitudes : {self.a}" +
                f"\nPositions : {self.x}")
 
-    def kernel(self, dom, noyau='gaussienne'):
+    def to(self, dev):
+        self.a = self.a.to(dev)
+        self.x = self.x.to(dev)
+
+    def kernel(self, dom, noyau='gaussienne', dev=device):
         """
         Applique un noyau à la mesure discrète :math:`m`.
         Pris en charge : convolution  à noyau gaussien.
@@ -326,11 +335,15 @@ class Mesure2D:
         N = self.N
         x = self.x
         a = self.a
-        acquis = X_domain*0
+        if dev == 'cuda':
+            acquis = torch.cuda.FloatTensor(domain.X.shape).fill_(0)
+        else:
+            acquis = torch.zeros(X_domain.shape)
         if noyau == 'gaussienne':
             for i in range(0, N):
-                acquis += a[i]*gaussienne_2D(X_domain - x[i, 0],
-                                             Y_domain - x[i, 1], sigma)
+                acquis += a[i] * gaussienne_2D(X_domain - x[i, 0],
+                                               Y_domain - x[i, 1], 
+                                               sigma)
             return acquis
         if noyau == 'laplace':
             raise TypeError("Pas implémenté.")
@@ -362,9 +375,13 @@ class Mesure2D:
         N = self.N
         x = self.x
         amp = self.a
-        acquis = torch.zeros(N_ech**2, N_ech**2)
+        if device == 'cuda':
+            acquis = torch.cuda.FloatTensor(N_ech**2, N_ech**2).fill_(0)
+        else:
+            acquis = torch.zeros(N_ech**2, N_ech**2)
         for i in range(0, N):
-            noyau = gaussienne_2D(X_domain - x[i, 0], Y_domain - x[i, 1], 
+            noyau = gaussienne_2D(X_domain - x[i, 0], 
+                                  Y_domain - x[i, 1], 
                                   sigma)
             noyau_re = noyau.reshape(-1)
             acquis += amp[i] * torch.outer(noyau_re, noyau_re)
@@ -407,7 +424,7 @@ class Mesure2D:
             return acquis
         if type_de_bruits == 'gauss':
             simul = self.kernel(dom, noyau='gaussienne')
-            w = torch.normal(0, nv, size=(echantillo, echantillo))
+            w = torch.normal(0, nv, size=(echantillo, echantillo)).to(device)
             acquis = simul + w + fond
             return acquis
         if type_de_bruits == 'poisson':
@@ -528,7 +545,7 @@ class Mesure2D:
         nnz_a = nnz_a[nnz]
         nnz_x = self.x.clone().detach()
         nnz_x = nnz_x[nnz]
-        m = Mesure2D(nnz_a, nnz_x)
+        m = Mesure2D(nnz_a, nnz_x, dev=device)
         return m
 
 
@@ -771,7 +788,7 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     return eta
 
 
-def pile_aquisition(m, dom, bru, T_ech):
+def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
     r"""Construit une pile d'acquisition à partir d'une mesure. Correspond à 
     l'opérateur $\vartheta(\mu)$ 
 
@@ -796,9 +813,14 @@ def pile_aquisition(m, dom, bru, T_ech):
     """
     N_mol = len(m.a)
     taille = dom.N_ech
-    acquis_temporelle = torch.zeros(T_ech, taille, taille)
+    if device == 'cuda':
+        acquis_temporelle = torch.cuda.FloatTensor(T_ech,
+                                                   taille,
+                                                   taille).fill_(0)
+    else:
+        acquis_temporelle = torch.zeros(T_ech, taille, taille)
     for t in range(T_ech):
-        a_tmp = torch.rand(N_mol) * m.a
+        a_tmp = torch.rand(N_mol).to(dev) * m.a
         m_tmp = Mesure2D(a_tmp, m.x)
         acquis_temporelle[t, :] = m_tmp.acquisition(dom, taille, bru)
     return acquis_temporelle
@@ -925,13 +947,14 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     """
     N_ech_y = dom.N_ech  # hierher à adapter
     N_grille = dom.N_ech**2
+    acquis = acquis.to(device)
     if obj == 'covar':
         N_grille = N_grille**2
     if mes_init == None:
-        mesure_k = Mesure2D()
-        a_k = torch.Tensor()
-        x_k = torch.Tensor()
-        x_k_demi = torch.Tensor()
+        mesure_k = Mesure2D(dev=device)
+        a_k = torch.Tensor().to(device)
+        x_k = torch.Tensor().to(device)
+        x_k_demi = torch.Tensor().to(device)
         Nk = 0
     else:
         mesure_k = mes_init
@@ -948,8 +971,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
         certif_abs = torch.abs(eta_V_k)
         x_star_index = unravel_index(certif_abs.argmax(), eta_V_k.shape)
-        x_star_tuple = tuple(s / N_ech_y for s in x_star_index) # passer de l'idx à xstar
-        x_star = torch.tensor(x_star_tuple).reshape(1,2)
+        x_star_tuple = tuple(s / N_ech_y for s in x_star_index)
+        x_star = torch.tensor(x_star_tuple).reshape(1,2).to(device)
         if printInline:
             print(fr'* x^* index {x_star_tuple} max ' +
                   fr'à {certif_abs[x_star_index]:.2f}')
@@ -968,11 +991,12 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         mesure_k_demi = Mesure2D()
         if not x_k.numel():
             x_k_demi = x_star
-            a_param = torch.ones(Nk+1, dtype=torch.float, requires_grad=True)
+            a_param = torch.ones(Nk+1,
+                                 dtype=torch.float).to(device).detach().requires_grad_(True)
         else:
             x_k_demi = torch.cat((x_k, x_star))
-            uno = torch.tensor([1.0], dtype=torch.float)
-            a_param = torch.cat((a_k, uno))      
+            uno = torch.tensor([1.0], dtype=torch.float).to(device).detach() 
+            a_param = torch.cat((a_k, uno)) 
             a_param.requires_grad=True
 
         # On résout LASSO (étape 7)        
@@ -1030,7 +1054,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         # print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
 
         # Mise à jour des paramètres avec retrait des Dirac nuls
-        mesure_k = Mesure2D(a_k_plus, x_k_plus)
+        mesure_k = Mesure2D(a_k_plus, x_k_plus, dev=device)
         mesure_k = mesure_k.prune()
         # mesure_k = merge_spikes(mesure_k)
         a_k = mesure_k.a
@@ -1104,7 +1128,7 @@ def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
 def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
                  saveFig=False, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
-    if m.a.size > 0:
+    if m.a.numel() > 0:
         fig = plt.figure(figsize=(15, 12))
         # fig = plt.figure(figsize=(13,10))
         # type_de_bruits = bruits.type
@@ -1115,7 +1139,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
         diss = wasserstein_metric(m, m_zer)
         fig.suptitle(f'Reconstruction {obj} : ' +
                      r'$\mathcal{{W}}_1(m, m_{a_0,x_0})$' +
-                     f' = {diss:.3f}', fontsize=22)
+                     f' = {diss:.3e}', fontsize=22)
 
         plt.subplot(221)
         cont1 = plt.contourf(dom.X, dom.Y, y, 100, cmap='gray')
@@ -1134,7 +1158,9 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
 
         plt.subplot(222)
         super_dom = dom.super_resolve(q)
-        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+        cont2 = plt.contourf(super_dom.X, 
+                             super_dom.Y, 
+                             m.kernel(super_dom, dev='cpu'),
                              100, cmap='gray')
         for c in cont2.collections:
             c.set_edgecolor("face")
@@ -1257,7 +1283,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
 def plot_reconstruction(m, dom, acquis, q=4, title=None, saveFig=False,
                         obj='covar'):
     '''Affiche que 2 graphes importants pour la mesure m'''
-    if m.a.size > 0:
+    if m.a.numel() > 0:
         fig = plt.figure(figsize=(15, 6))
         fig.suptitle(f'Reconstruction {obj}', fontsize=22)
 
@@ -1515,19 +1541,22 @@ def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
 
 
 
-N_ECH = 32
+N_ECH = 64
 X_GAUCHE = 0
 X_DROIT = 1
 FWMH = 2.2875 / N_ECH
 SIGMA = 0.10
-domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
+domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
+domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
 a = torch.Tensor([1,2])
 x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
 x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
 
-m = Mesure2D(a,x)
-m2 = Mesure2D(a,x2)
+m = Mesure2D(a, x, dev=device)
+m_cpu = Mesure2D(a, x, dev='cpu')
+# m = mesure_aleatoire(5, domain)
+m2 = Mesure2D(a, x2)
 
 # plt.imshow(m.kernel(domain), extent=[0,1,1,0])
 # plt.title('$\Phi(m)$', fontsize=28)
@@ -1546,8 +1575,9 @@ bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
 
 
 T_ECH = 50
-pile = pile_aquisition(m, domain, bruits_t, T_ECH)
+pile = pile_aquisition(m, domain, bruits_t, T_ECH, dev=device)
 y_bar = pile.mean(0)
+y_bar_cpu = y_bar.to('cpu')
 cov_pile = covariance_pile(pile)
 R_y = cov_pile
 
@@ -1560,7 +1590,7 @@ R_y = cov_pile
 
 lambda_cov = 1e-5
 lambda_moy = 1e-5
-iteration = 2
+iteration = m.N
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_cov,
                                          nIter=iteration, mesParIter=True,
@@ -1575,16 +1605,19 @@ iteration = 2
 print(f'm_moy : {m_moy.N} Diracs')
 print(m_moy)
 
+
 if m_cov.N > 0:
     certificat_V_cov = etak(m_cov, R_y, domain, lambda_cov,
-                                     obj='covar')
-    plot_experimental(m_cov, domain, y_bar, nrj_cov,
-                               certificat_V_cov, obj='covar')
+                            obj='covar').to('cpu')
+    m_cov.to('cpu')
+    plot_results(m_cov, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_cov,
+                 certificat_V_cov, obj='covar')
 if m_moy.N > 0:
     certificat_V_moy = etak(m_moy, y_bar, domain, lambda_moy,
-                                     obj='acquis')
-    plot_experimental(m_moy, domain, y_bar, nrj_moy,
-                               certificat_V_moy, obj='acquis')
+                            obj='acquis').to('cpu')
+    m_moy.to('cpu')
+    plot_results(m_moy, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_moy,
+                 certificat_V_moy, obj='acquis')
 
 
 
