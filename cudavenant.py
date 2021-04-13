@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Attemps to provide the covenant package with a GPU acceleration with CUDA. 
+Attemps to provide the covenant package with a GPU acceleration with CUDA.
 Provides  the essential functions for simulating nD discrete Radon measures
 and reconstructing those measures w.r.t to a provided acquistion
 
@@ -11,30 +11,28 @@ Created on Mon Mar 22 08:49:01 2021
 """
 
 
-__normalis_PSF__ = False
+__normalis_PSF__ = True
 
 
 import torch
 import numpy as np
 import ot
-import scipy
 
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
 
-# # GPU acceleration if needed
-# # Currently ONLY on CPU, you might want to put cudavenant in GPU also
-# dtype = torch.cuda.float if torch.cuda.is_available() else torch.float
+# GPU acceleration if needed
 device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
 print("[Cudavenant] Using {} device".format(device))
 
 
 
 def sum_normalis(X_domain, Y_domain, sigma_g):
-    """
-    Renvoie la somme de toutes les composantes de la PSF discrète, pour que 
+    r"""
+    Renvoie la somme de toutes les composantes de la PSF discrète, pour que
     l'on puisse normaliser la PSF, de sorte à avoir torch.sum(PSF) = 1
 
     Parameters
@@ -60,7 +58,7 @@ def sum_normalis(X_domain, Y_domain, sigma_g):
 
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
-    """
+    r"""
     Gaussienne en 2D centrée en 0 normalisée.
 
     Parameters
@@ -81,20 +79,19 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
         Vecteur discrétisant la gaussienne :math:`h` sur :math:`\mathcal{X}`.
 
     """
-    expo = torch.exp(-(torch.pow(X_domain, 2) + torch.pow(Y_domain, 2)) 
+    expo = torch.exp(-(torch.pow(X_domain, 2) + torch.pow(Y_domain, 2))
                   / (2*sigma_g**2))
     normalis = (sigma_g * (2*np.pi))
     normalis = 1 / normalis
     if undivide == True:
-        sum_normalis = torch.sum(expo * normalis)
-        return expo * normalis / sum_normalis
-    else:
-        return expo * normalis
+        sumistan = torch.sum(expo * normalis)
+        return expo * normalis / sumistan
+    return expo * normalis
 
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
-    """
-    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la 
+    r"""
+    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la
     chain rule derivation.
 
     Parameters
@@ -112,7 +109,7 @@ def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
     Returns
     -------
     Tensor
-        Vecteur discrétisant la première dérivée partielle de la gaussienne 
+        Vecteur discrétisant la première dérivée partielle de la gaussienne
         :math:`\partial_1 h` sur :math:`\mathcal{X}`.
 
     """
@@ -123,8 +120,8 @@ def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
 
 
 def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
-    """
-    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la 
+    r"""
+    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la
     chain rule derivation.
 
     Parameters
@@ -142,7 +139,7 @@ def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
     Returns
     -------
     Tensor
-        Vecteur discrétisant la première dérivée partielle de la gaussienne 
+        Vecteur discrétisant la première dérivée partielle de la gaussienne
         :math:`\partial_2 h` sur :math:`\mathcal{X}`.
 
     """
@@ -170,7 +167,7 @@ class Domain2D:
         return(self.X, self.Y)
 
     def compute_square_mesh(self):
-        """
+        r"""
         Renvoie les grilles discrétisant le domaine :math:`\mathcal{X}` à N_ech
 
         Returns
@@ -183,7 +180,7 @@ class Domain2D:
 
     def big(self):
         """
-        Renvoie les grilles adaptées pour le calcul de la convolution discrètes 
+        Renvoie les grilles adaptées pour le calcul de la convolution discrètes
         (par exemple dans phiAdjoint) entre deux matrices
 
         Returns
@@ -201,7 +198,7 @@ class Domain2D:
 
     def biggy(self):
         """
-        Renvoie les grilles adaptées pour le calcul de la convolution discrètes 
+        Renvoie les grilles adaptées pour le calcul de la convolution discrètes
         (par exemple dans phiAdjoint) entre deux matrices
 
         Returns
@@ -220,7 +217,7 @@ class Domain2D:
 
     def reverse(self):
         """
-        Renvoie les grilles adaptées pour le calcul de la convolution discrètes 
+        Renvoie les grilles adaptées pour le calcul de la convolution discrètes
         (par exemple dans phiAdjoint) entre deux matrices
 
         Returns
@@ -297,23 +294,37 @@ class Mesure2D:
                f"\nPositions : {self.x}")
 
     def to(self, dev):
+        """
+        Envoie l'objet Mesure2D sur le composants `device` (le processeur ou 
+        la carte graphique Nvidia)
+
+        Parameters
+        ----------
+        dev : str
+            Soit `cpu`, `cuda` (GPU par défaut) ou `cuda:0`, `cuda:1`, etc.
+
+        Returns
+        -------
+        None.
+
+        """
         self.a = self.a.to(dev)
         self.x = self.x.to(dev)
 
     def kernel(self, dom, noyau='gaussienne', dev=device):
-        """
+        r"""
         Applique un noyau à la mesure discrète :math:`m`.
         Pris en charge : convolution  à noyau gaussien.
 
         Parameters
         ----------
         dom : :py:class:`covenant.Domain2D`
-            Domaine sur lequel va être calculé l'acquisition de :math:`m` dans 
+            Domaine sur lequel va être calculé l'acquisition de :math:`m` dans
             :math:`\\mathrm{L}^2(\\mathcal{X})`.
         noyau : str, optional
-            Classe du noyau appliqué sur la mesure. Seule la classe 
-            'gaussienne' est pour l'instant prise en charge, le noyau de 
-            Laplace ou la fonction d'Airy seront probablement implémentées 
+            Classe du noyau appliqué sur la mesure. Seule la classe
+            'gaussienne' est pour l'instant prise en charge, le noyau de
+            Laplace ou la fonction d'Airy seront probablement implémentées
             dans une prochaine version. The default is 'gaussienne'.
 
         Raises
@@ -336,13 +347,13 @@ class Mesure2D:
         x = self.x
         a = self.a
         if dev == 'cuda':
-            acquis = torch.cuda.FloatTensor(domain.X.shape).fill_(0)
+            acquis = torch.cuda.FloatTensor(X_domain.shape).fill_(0)
         else:
             acquis = torch.zeros(X_domain.shape)
         if noyau == 'gaussienne':
             for i in range(0, N):
                 acquis += a[i] * gaussienne_2D(X_domain - x[i, 0],
-                                               Y_domain - x[i, 1], 
+                                               Y_domain - x[i, 1],
                                                sigma)
             return acquis
         if noyau == 'laplace':
@@ -352,14 +363,14 @@ class Mesure2D:
         raise NameError("Unknown kernel.")
 
     def cov_kernel(self, dom):
-        """
+        r"""
         Noyau de covariance associée à la mesure :math:`m` sur le domaine `dom`
 
         Parameters
         ----------
         dom : Domain2D
-            Domaine :math:`\mathcal{X}` sur lequel va être calculé 
-            l'acquisition de :math:`m` dans 
+            Domaine :math:`\mathcal{X}` sur lequel va être calculé
+            l'acquisition de :math:`m` dans
             :math:`\\mathrm{L}^2(\\mathcal{X}^2)`.
 
         Returns
@@ -380,8 +391,8 @@ class Mesure2D:
         else:
             acquis = torch.zeros(N_ech**2, N_ech**2)
         for i in range(0, N):
-            noyau = gaussienne_2D(X_domain - x[i, 0], 
-                                  Y_domain - x[i, 1], 
+            noyau = gaussienne_2D(X_domain - x[i, 0],
+                                  Y_domain - x[i, 1],
                                   sigma)
             noyau_re = noyau.reshape(-1)
             acquis += amp[i] * torch.outer(noyau_re, noyau_re)
@@ -389,7 +400,7 @@ class Mesure2D:
 
 
     def acquisition(self, dom, echantillo, bru):
-        """
+        r"""
         Simule une acquisition pour la mesure.
 
         Parameters
@@ -418,7 +429,7 @@ class Mesure2D:
         nv = bru.niveau
         type_de_bruits = bru.type
         if type_de_bruits == 'unif':
-            w = nv*np.random.random_sample((echantillo, echantillo))
+            w = (nv * torch.rand((echantillo, echantillo))).to(device)
             simul = self.kernel(dom, noyau='gaussienne')
             acquis = simul + w + fond
             return acquis
@@ -446,7 +457,7 @@ class Mesure2D:
         plt.show()
 
     def tv(self):
-        """
+        r"""
         Renvoie 0 si la mesure est vide : hierher à vérifier.
 
         Returns
@@ -461,8 +472,8 @@ class Mesure2D:
             return 0
 
     def energie(self, dom, acquis, regul, obj='covar', bruits='gauss'):
-        """
-        Énergie de la mesure pour le problème Covenant 
+        r"""
+        Énergie de la mesure pour le problème Covenant
         :math:`(\mathcal{Q}_\lambda (y))` ou BLASSO sur
         l'acquisition moyenne :math:`(\mathcal{P}_\lambda (\overline{y}))`.
 
@@ -477,7 +488,7 @@ class Mesure2D:
         regul : double, optional
             Paramètre de régularisation `\lambda`.
         obj : str, optional
-            Soit 'covar' pour reconstruire sur la covariance soit 'acquis' 
+            Soit 'covar' pour reconstruire sur la covariance soit 'acquis'
             pour reconstruire sur la moyenne. The default is 'covar'.
         bruits : str, optional
             L'objet contient toutes les valeurs définissant le bruit à simuler.
@@ -494,8 +505,9 @@ class Mesure2D:
             Évaluation de l'énergie :math:`T_\lambda` pour la mesure :math:`m`.
 
         """
+        # normalis = torch.numel(acquis)
+        normalis = 1
         if bruits == 'poisson':
-            normalis = torch.numel(acquis)
             if obj == 'covar':
                 R_nrj = self.cov_kernel(dom)
                 attache = 0.5 * torch.linalg.norm(acquis - R_nrj)**2 / normalis
@@ -507,7 +519,6 @@ class Mesure2D:
                 parcimonie = regul*self.tv()
                 return attache + parcimonie
         elif bruits in ('gauss', 'unif'):
-            normalis = torch.numel(acquis)
             if obj == 'covar':
                 R_nrj = self.cov_kernel(dom)
                 attache = 0.5 * torch.linalg.norm(acquis - R_nrj)**2 / normalis
@@ -522,8 +533,8 @@ class Mesure2D:
         raise NameError("Unknown noise")
 
     def prune(self, tol=1e-3):
-        """
-        Retire les :math:`\delta`-pics avec une très faible amplitude (qui 
+        r"""
+        Retire les :math:`\delta`-pics avec une très faible amplitude (qui
         s'interpète comme des artefacts numériques).
 
         Parameters
@@ -536,7 +547,7 @@ class Mesure2D:
         -------
         m : Mesure2D
             Mesure discrète sans les :math:`\delta`-pics de faibles amplitudes.
-            
+
 
         """
         # nnz = np.count_nonzero(self.a)
@@ -594,7 +605,7 @@ class Mesure2D:
 
 
 def mesure_aleatoire(N, dom):
-    """
+    r"""
     Créé une mesure aléatoire de N :math:`\delta`-pics d'amplitudes aléatoires
     comprises entre 0,5 et 1,5.
 
@@ -617,7 +628,7 @@ def mesure_aleatoire(N, dom):
 
 
 def phi(m, dom, obj='covar'):
-    """
+    r"""
     Calcule le résultat d'un opérateur d'acquisition à partir de la mesure m
 
     Parameters
@@ -625,9 +636,9 @@ def phi(m, dom, obj='covar'):
     m : Mesure2D
         Mesure discrète sur :math:`\mathcal{X}`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être calculée l'acquisition 
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        Domaine :math:`\mathcal{X}` sur lequel va être calculée l'acquisition
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
         la covariance.
     obj : str, optional
         Donne l'objectif de l'opérateur. The default is 'covar'.
@@ -640,7 +651,7 @@ def phi(m, dom, obj='covar'):
     Returns
     -------
     Tensor
-        Renvoie :math:`\Phi(m)` si l'objectif est l'acquisition, et 
+        Renvoie :math:`\Phi(m)` si l'objectif est l'acquisition, et
         :math:`\Lambda(m)` si l'objectif est la covariance.
 
     """
@@ -652,7 +663,7 @@ def phi(m, dom, obj='covar'):
 
 
 def phi_vecteur(a, x, dom, obj='covar'):
-    """
+    r"""
     Créer le résultat d'un opérateur d'acquisition à partir des vecteurs
     a et x qui forme une mesure m_tmp
 
@@ -663,9 +674,9 @@ def phi_vecteur(a, x, dom, obj='covar'):
     x : array_like
         Vecteur des positions 2D, même nombre d'éléments que :math:`a`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
         la covariance.
     obj : str, optional
         Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
@@ -692,17 +703,17 @@ def phi_vecteur(a, x, dom, obj='covar'):
 
 
 def phiAdjoint(acquis, dom, obj='covar'):
-    """
+    r"""
     Hierher débugger ; taille_x et taille_y pas implémenté
 
     Parameters
     ----------
-    acquis : Tensor 
+    acquis : Tensor
         Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
         la covariance.
     obj : str, optional
         Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
@@ -717,21 +728,21 @@ def phiAdjoint(acquis, dom, obj='covar'):
     -------
     eta : Tensor
         Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
-        discrétisée. Utile pour calculer la discrétisation du certificat 
+        discrétisée. Utile pour calculer la discrétisation du certificat
         :math:`\eta` associé à une mesure.
 
     """
     N_ech = dom.N_ech
     sigma = dom.sigma
     if obj == 'covar':
-        # (Xt, Yt) = domain.get_domain()
-        # h_vec = gaussienne_2D(Xt, Yt, SIGMA,
-        #                       undivide=__normalis_PSF__).reshape(-1)
-        # lambda_vec = torch.outer(h_vec, h_vec)
-        # eta = torch.fft.ifft2(torch.fft.fft2(lambda_vec) @\
-        #                       torch.fft.fft2(acquis))
-        eta = acquis
-        eta = torch.diag(torch.abs(eta)).reshape(N_ech, N_ech)
+        (X_big, Y_big) = dom.big()
+        h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
+        h_vec2 = torch.pow(h_vec, 2)
+        h_ker = h_vec2.reshape(1, 1, N_ech*2-1 , N_ech*2-1)
+        diacquis = torch.diag(torch.abs(acquis)).reshape(N_ech, N_ech)
+        y_arr = diacquis.reshape(1, 1, N_ech , N_ech)
+        eta = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
+        eta = torch.flip(torch.squeeze(eta), [1, 0])
         return eta
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
@@ -739,27 +750,27 @@ def phiAdjoint(acquis, dom, obj='covar'):
         h_ker = h_vec.reshape(1, 1, N_ech*2-1 , N_ech*2-1)
         y_arr = acquis.reshape(1, 1, N_ech , N_ech)
         eta = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
-        eta = torch.squeeze(eta)
-        return acquis
+        eta = torch.flip(torch.squeeze(eta), [1, 0])
+        return eta
     raise TypeError
 
 
 def etak(mesure, acquis, dom, regul, obj='covar'):
-    r"""Certificat dual :math:`\eta_\lambda` associé à la mesure 
-    :math:`m_\lambda`. Ce certificat permet de donner une approximation 
-    (sur la grille) de la  position du Dirac de plus forte intensité du 
+    r"""Certificat dual :math:`\eta_\lambda` associé à la mesure
+    :math:`m_\lambda`. Ce certificat permet de donner une approximation
+    (sur la grille) de la  position du Dirac de plus forte intensité du
     résidu.
 
     Parameters
     ----------
     mesure : Mesure2D
         Mesure discrète :math:`m` dont on veut obtenir le certificat duaL.
-    acquis : Tensor 
+    acquis : Tensor
         Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint 
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est 
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est 
+        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint
+        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
+        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
         la covariance.
     regul : double
         Paramètre de régularisation `\lambda`.
@@ -789,8 +800,8 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
 
 
 def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
-    r"""Construit une pile d'acquisition à partir d'une mesure. Correspond à 
-    l'opérateur $\vartheta(\mu)$ 
+    r"""Construit une pile d'acquisition à partir d'une mesure. Correspond à
+    l'opérateur $\vartheta(\mu)$
 
     Parameters
     ----------
@@ -827,7 +838,7 @@ def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
 
 
 def covariance_pile(stack):
-    """Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne
+    r"""Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne
 
     Parameters
     ----------
@@ -845,13 +856,14 @@ def covariance_pile(stack):
     La moyenne est donnée par :math:`x \in \mathcal{X}` :
 
     .. math:: \overline{y}(x) = \int_0^T y(x,t) \,\mathrm{d}t.
-    
+
     La covariance est donnée par :math:`u,v \in \mathcal{X}` :
 
-    .. math:: R_y(u,v) = \int_0^T (y(u,t) - \overline{y}(u))(y(v,t) - 
-                                            \overline{y}(v))\,\mathrm{d}t. 
+    .. math:: R_y(u,v) = \int_0^T (y(u,t) - \overline{y}(u))(y(v,t) -
+                                            \overline{y}(v))\,\mathrm{d}t.
 
     """
+    stack = stack.float()
     stack_re = stack.reshape(stack.shape[0],-1)
     stack_re -= stack_re.mean(0, keepdim=True)
     return 1/(stack_re.shape[0]-1) * stack_re.T @ stack_re
@@ -885,7 +897,7 @@ def unravel_index(indices, shape):
 # Le fameux algo de Sliding Frank Wolfe
 def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         obj='covar', printInline=True):
-    """Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
+    r"""Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
     solution du BLASSO [1].
 
     Si l'objectif est la covariance :
@@ -904,7 +916,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
     Paramètres
     ----------
-    acquis : ndarray 
+    acquis : ndarray
             Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
     dom : Domain2D
         Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
@@ -914,10 +926,10 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     nIter : int, optional
         Nombre d'itérations maximum pour l'algorithme. The default is 5.
     mes_init : Mesure2D, optional
-        Mesure pour initialiser l'algorithme. Si None est passé en argument, 
+        Mesure pour initialiser l'algorithme. Si None est passé en argument,
         l'algorithme initialisera avec la mesure nulle. The default is None.
     mesParIter : boolean, optional
-        Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les 
+        Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les
         :math:`k` mesures calculées par SFW. The default is False.
     obj : str, optional
         Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
@@ -928,7 +940,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     mesure_k : Mesure2D
             Dernière mesure reconstruite par SFW.
     nrj_vecteur : ndarray
-                Vecteur qui donne l'énergie :math:`T_\lambda(m^k)` 
+                Vecteur qui donne l'énergie :math:`T_\lambda(m^k)`
                 au fil des itérations.
     mes_vecteur : ndarray
                 Vecteur des mesures reconstruites au fil des itérations.
@@ -940,8 +952,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
     Références
     ----------
-    [1] Quentin Denoyelle, Vincent Duval, Gabriel Peyré, Emmanuel Soubies. 
-    The Sliding Frank-Wolfe Algorithm and its Application to Super-Resolution 
+    [1] Quentin Denoyelle, Vincent Duval, Gabriel Peyré, Emmanuel Soubies.
+    The Sliding Frank-Wolfe Algorithm and its Application to Super-Resolution
     Microscopy. Inverse Problems, IOP Publishing, In press
     https://hal.archives-ouvertes.fr/hal-01921604
     """
@@ -975,12 +987,11 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         x_star = torch.tensor(x_star_tuple).reshape(1,2).to(device)
         if printInline:
             print(fr'* x^* index {x_star_tuple} max ' +
-                  fr'à {certif_abs[x_star_index]:.2f}')
+                  fr'à {certif_abs[x_star_index]:.3e}')
 
         # Condition d'arrêt (étape 4)
         if torch.abs(eta_V_k[x_star_index]) < 1:
-            nrj_vecteur[k] = mesure_k.energie(dom, acquis,
-                                              regul, obj=obj)
+            nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj=obj)
             if printInline:
                 print("\n\n---- Condition d'arrêt ----")
             if mesParIter:
@@ -991,32 +1002,34 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         mesure_k_demi = Mesure2D()
         if not x_k.numel():
             x_k_demi = x_star
-            a_param = torch.ones(Nk+1,
-                                 dtype=torch.float).to(device).detach().requires_grad_(True)
+            a_param = (torch.ones(Nk+1, dtype=torch.float)
+                       ).to(device).detach().requires_grad_(True)
         else:
             x_k_demi = torch.cat((x_k, x_star))
-            uno = torch.tensor([1.0], dtype=torch.float).to(device).detach() 
-            a_param = torch.cat((a_k, uno)) 
+            uno = torch.tensor([10.0], dtype=torch.float).to(device).detach()
+            a_param = torch.cat((a_k, uno))
             a_param.requires_grad=True
 
-        # On résout LASSO (étape 7)        
+        # On résout LASSO (étape 7)
         mse_loss = torch.nn.MSELoss(reduction='sum')
-        optimizer = torch.optim.LBFGS([a_param], lr=1)
+        optimizer = torch.optim.LBFGS([a_param])
         alpha = regul
         n_epoch = 10
-        
+
         for epoch in range(n_epoch):
             def closure():
-                optimizer.zero_grad()
+                if torch.is_grad_enabled():
+                    optimizer.zero_grad()
                 outputs = phi_vecteur(a_param, x_k_demi, dom, obj)
                 loss = 0.5 * mse_loss(acquis, outputs)
-                
                 loss += alpha * a_param.abs().sum()
-                loss.backward()
+                if loss.requires_grad:
+                    loss.backward()
+                del outputs
                 return loss
-        
+
             optimizer.step(closure)
-            
+
         a_k_demi = a_param.detach().clone() # pour ne pas copier l'arbre
 
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
@@ -1026,26 +1039,24 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
-
         param = torch.cat((a_k_demi, x_k_demi.reshape(-1)))
-        param.requires_grad = True 
-        
+        param.requires_grad = True
+
         mse_loss = torch.nn.MSELoss(reduction='sum')
-        optimizer = torch.optim.Adam([param])
-        alpha = regul
+        optimizer = torch.optim.LBFGS([param], lr=0.1)
         n_epoch = 20
-        
+
         for epoch in range(n_epoch):
             def closure():
                 optimizer.zero_grad()
                 x_tmp = param[Nk+1:].reshape(Nk+1, 2)
                 fidelity = phi_vecteur(param[:Nk+1], x_tmp, dom, obj)
                 loss = 0.5 * mse_loss(acquis, fidelity)
-                
-                loss += alpha * param[:1].abs().sum()
+                loss += regul * param[:1].abs().sum()
                 loss.backward()
+                del fidelity, x_tmp
                 return loss
-        
+
             optimizer.step(closure)
 
         a_k_plus = param[:int(len(param)/3)].detach().clone()
@@ -1070,8 +1081,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
         try:
-            if (N_vecteur[-1] == N_vecteur[-2] 
-                and N_vecteur[-1] == N_vecteur[-3] 
+            if (N_vecteur[-1] == N_vecteur[-2]
+                and N_vecteur[-1] == N_vecteur[-3]
                 and N_vecteur[-1] == N_vecteur[-4]):
                 if printInline:
                     print('\n[!] Algorithme a optimisé')
@@ -1082,6 +1093,9 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         except IndexError:
             pass
         N_vecteur = np.append(N_vecteur, Nk)
+        # del (a_k_plus, x_k_plus, optimizer, mse_loss, x_k_demi, a_k_demi, 
+        #      a_param)
+        # torch.cuda.empty_cache()
 
     # Fin des itérations
     if printInline:
@@ -1093,7 +1107,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
 def wasserstein_metric(mes, m_zer, p_wasser=1):
     '''Retourne la p--distance de Wasserstein partiel (Partial Gromov-
-    Wasserstein) pour des poids égaux (pas de prise en compte de la 
+    Wasserstein) pour des poids égaux (pas de prise en compte de la
     luminosité)'''
     if p_wasser == 1:
         M = ot.dist(mes.x, m_zer.x, metric='euclidean')
@@ -1116,14 +1130,6 @@ def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
         return M
     raise ValueError('Unknown p for W_p computation')
 
-
-# # Biblio :
-# # https://stackoverflow.com/questions/50621786/lbfgs-never-converges-in-large-dimensions-in-pytorch
-# # Optim : https://discuss.pytorch.org/t/use-pytorch-optimizer-to-minimize-a-user-function/66712/8
-# # https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1003833
-# https://jhui.github.io/2018/02/09/PyTorch-Variables-functionals-and-Autograd/
-# https://discuss.pytorch.org/t/nn-l1loss-vs-sklearns-l1-loss-different-optimization-results/66136/2
-# https://stackoverflow.com/questions/50621786/lbfgs-never-converges-in-large-dimensions-in-pytorch
 
 def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
                  saveFig=False, obj='covar'):
@@ -1158,8 +1164,8 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
 
         plt.subplot(222)
         super_dom = dom.super_resolve(q)
-        cont2 = plt.contourf(super_dom.X, 
-                             super_dom.Y, 
+        cont2 = plt.contourf(super_dom.X,
+                             super_dom.Y,
                              m.kernel(super_dom, dev='cpu'),
                              100, cmap='gray')
         for c in cont2.collections:
@@ -1208,15 +1214,10 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
 
 def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
                       saveFig=False, obj='covar'):
-    '''Affiche tous les graphes importants pour la mesure m'''
+    '''Affiche tous les graphes importants pour la mesure m sans connaissance
+    de la mesure vérité-terrain.'''
     if m.a.numel() > 0:
         fig = plt.figure(figsize=(15, 12))
-        # fig = plt.figure(figsize=(13,10))
-        # type_de_bruits = bruits.type
-        # niveau_bruits = bruits.niveau
-        # fig.suptitle(fr'Reconstruction en bruits {type_de_bruits} ' +
-        #              fr'pour $\lambda = {lambda_regul:.0e}$ ' +
-        #              fr'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
         fig.suptitle(f'Reconstruction {obj}', fontsize=22)
 
         plt.subplot(221)
@@ -1225,7 +1226,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
             c.set_edgecolor("face")
         plt.colorbar()
         plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
-                    label='Recovered spikes')
+                    label='Recovered spikes', s=dom.N_ech*m.a)
         plt.legend()
 
         plt.xlabel('X', fontsize=18)
@@ -1234,7 +1235,8 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
 
         plt.subplot(222)
         super_dom = dom.super_resolve(q)
-        cont2 = plt.contourf(super_dom.X, super_dom.Y, m.kernel(super_dom),
+        cont2 = plt.contourf(super_dom.X, super_dom.Y,
+                             m.kernel(super_dom, dev='cpu'),
                              100, cmap='gray')
         for c in cont2.collections:
             c.set_edgecolor("face")
@@ -1353,7 +1355,8 @@ def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
         # ax.legend(loc=1, fontsize=20)
         # ax.tight_layout()
 
-    anim = FuncAnimation(fig, animate, interval=400, frames=len(pile_acquis)+3,
+    anim = FuncAnimation(fig, animate, interval=400,
+                         frames=len(pile_acquis)+3,
                          blit=False)
 
     plt.draw()
@@ -1374,7 +1377,8 @@ def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
     return fig
 
 
-def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif', title=None):
+def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif',
+                title=None):
     '''Montre comment la fonction SFW ajoute ses Dirac'''
     fig = plt.figure(figsize=(20, 10))
 
@@ -1441,7 +1445,7 @@ def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif', title=None):
     return fig
 
 
-def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif', 
+def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
                      title=None):
     '''Montre comment la fonction SFW ajoute ses Dirac'''
     fig = plt.figure(figsize=(20, 10))
@@ -1467,8 +1471,8 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
     ax2.imshow(acquis, cmap='seismic')
     if cross:
         taille = dom.N_ech
-        ax2.scatter(taille*m_list[0].x[:, 0], taille*m_list[0].x[:, 1], 
-                    marker='+', s=2*dom.N_ech, c='g',
+        ax2.scatter(taille*m_list[0].x[:, 0], taille * (1-m_list[0].x[:, 1]),
+                    marker='+', s=dom.N_ech, c='orange',
                     label='Recovered spikes')
         ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
@@ -1477,14 +1481,15 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
         if k >= len(m_list):
             # On fige l'animation pour faire une pause à la pause
             return
+
         ax2.clear()
         ax2.set_aspect('equal', adjustable='box')
         # ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
         #              cmap='seismic')
         ax2.imshow(m_list[k].kernel(dom), cmap='seismic')
         if cross:
-            ax2.scatter(taille*m_list[k].x[:, 0], taille*m_list[k].x[:, 1], 
-                        marker='+', s=2*dom.N_ech, c='g', 
+            ax2.scatter( taille*(m_list[k].x[:, 1]), taille*m_list[k].x[:, 0],
+                        marker='+', s=dom.N_ech, c='orange',
                         label='Recovered spikes')
             ax2.legend(loc=1, fontsize=20)
         ax2.set_xlabel('X', fontsize=25)
@@ -1541,11 +1546,11 @@ def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
 
 
 
-N_ECH = 64
+N_ECH = 32
 X_GAUCHE = 0
 X_DROIT = 1
 FWMH = 2.2875 / N_ECH
-SIGMA = 0.10
+SIGMA = 1e-1
 domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
 domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
@@ -1553,28 +1558,33 @@ a = torch.Tensor([1,2])
 x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
 x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
 
+a = torch.tensor([8, 10, 6, 7, 9])
+x = torch.tensor([[0.2, 0.23], [0.90, 0.95],
+                  [0.33, 0.82], [0.33, 0.30],
+                  [0.23, 0.38]])
+
 m = Mesure2D(a, x, dev=device)
 m_cpu = Mesure2D(a, x, dev='cpu')
-# m = mesure_aleatoire(5, domain)
-m2 = Mesure2D(a, x2)
+# m2 = Mesure2D(a, x2)
 
-# plt.imshow(m.kernel(domain), extent=[0,1,1,0])
+# plt.figure()
+# plt.imshow(m.kernel(domain).to('cpu'), extent=[0,1,1,0])
 # plt.title('$\Phi(m)$', fontsize=28)
 # plt.colorbar()
 
 # plt.figure()
-# plt.imshow(m.cov_kernel(domain), extent=[0,1,1,0])
+# plt.imshow(m.cov_kernel(domain).to('cpu'), extent=[0,1,1,0])
 # plt.colorbar()
 # plt.title('$\Lambda(m)$', fontsize=28)
 
 
-FOND = 0.0
-SIGMA_BRUITS = 0.000001e-1
-TYPE_BRUITS = 'gauss'
+FOND = 1e-3
+SIGMA_BRUITS = 1e-4
+TYPE_BRUITS = 'unif'
 bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
 
 
-T_ECH = 50
+T_ECH = 100
 pile = pile_aquisition(m, domain, bruits_t, T_ECH, dev=device)
 y_bar = pile.mean(0)
 y_bar_cpu = y_bar.to('cpu')
@@ -1588,13 +1598,13 @@ R_y = cov_pile
 # plt.title('$R_y$', fontsize=28)
 
 
-lambda_cov = 1e-5
+lambda_cov = 1e-7
 lambda_moy = 1e-5
 iteration = m.N
 
 (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_cov,
-                                         nIter=iteration, mesParIter=True,
-                                         obj='covar', printInline=True)
+                                          nIter=iteration, mesParIter=True,
+                                          obj='covar', printInline=True)
 
 (m_moy, nrj_moy, mes_moy) = SFW(y_bar , domain,
                                 regul=lambda_moy,
@@ -1602,8 +1612,9 @@ iteration = m.N
                                 obj='acquis', printInline=True)
 
 
+print(f'm_cov : {m_cov.N} Diracs')
 print(f'm_moy : {m_moy.N} Diracs')
-print(m_moy)
+# print(m_moy)
 
 
 if m_cov.N > 0:
@@ -1611,13 +1622,13 @@ if m_cov.N > 0:
                             obj='covar').to('cpu')
     m_cov.to('cpu')
     plot_results(m_cov, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_cov,
-                 certificat_V_cov, obj='covar')
+                  certificat_V_cov, obj='covar')
 if m_moy.N > 0:
     certificat_V_moy = etak(m_moy, y_bar, domain, lambda_moy,
                             obj='acquis').to('cpu')
     m_moy.to('cpu')
     plot_results(m_moy, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_moy,
-                 certificat_V_moy, obj='acquis')
+                  certificat_V_moy, obj='acquis')
 
 
 
@@ -1690,13 +1701,13 @@ if m_moy.N > 0:
 #         optimizer.zero_grad()
 #         outputs = phi_vecteur(a_param, x_k_demi, domain, obj='acquis')
 #         loss = 0.5 * mse_loss(acquis, outputs)
-        
+
 #         loss += alpha * a_param.abs().sum()
 #         loss.backward()
 #         return loss
 
 #     optimizer.step(closure)
-    
+
 # print(a_param)
 
 
@@ -1719,7 +1730,7 @@ if m_moy.N > 0:
 # x_param = torch.tensor([[0.085, 0.21]], dtype=torch.float)
 
 # param = torch.cat((a_param, x_param.reshape(-1)))
-# param.requires_grad = True 
+# param.requires_grad = True
 
 # with torch.no_grad():
 #     param[1:] = param[1:].clamp(0, +1)
@@ -1735,14 +1746,34 @@ if m_moy.N > 0:
 #         x_tmp = param[1:].reshape(1,2)
 #         fidelity = phi_vecteur(param[:1], x_tmp, domain, obj='covar')
 #         loss = 0.5 * mse_loss(acquis, fidelity)
-        
+
 #         loss += alpha * param[:1].abs().sum()
 #         loss.backward()
 #         return loss
 
 #     optimizer.step(closure)
-    
+
 # print(param)
 
+# #%%
 
+# plt.figure()
+# plt.subplot(121)
+# plt.imshow(cov_pile.to('cpu'))
+# plt.colorbar()
+# plt.subplot(122)
+# plt.imshow(phi(m_cpu, domain_cpu))
+
+
+# plt.figure()
+# plt.imshow(cov_pile.to('cpu') - phi(m_cpu, domain_cpu));plt.colorbar()
+
+# plt.figure()
+# plt.imshow(phiAdjoint(cov_pile.to('cpu') - phi(m_cpu, domain_cpu), 
+#                       domain_cpu))
+# plt.colorbar()
+
+
+# Biblio
+# http://sagecal.sourceforge.net/pytorch/index.html
 
