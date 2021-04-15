@@ -11,7 +11,7 @@ http://bigwww.epfl.ch/smlm/challenge2016/datasets/MT4.N2.HD/Data/data.html
 """
 
 
-__saveFig__ = True
+__saveFig__ = False
 __saveVid__ = False
 
 
@@ -33,7 +33,7 @@ print("[Test] Using {} device".format(device))
 
 # Charger pile et cumulants
 stream = io.imread('sofi_filaments/tubulin_noiseless_lowBg.tif')
-pile = torch.from_numpy(np.array(stream, dtype='float64')) [:,32:,:32]
+pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,32:,:32]
 pile_max = torch.max(pile)
 # pile /= torch.sqrt(pile_max)
 pile /= pile_max
@@ -60,12 +60,12 @@ SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
 domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
 domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
-q = 2**3
-super_domain = domain.super_resolve(q)
+q = 2**2
+super_domain = domain.super_resolve(q, SIGMA/2)
 
-lambda_cov = 1e-6
-lambda_moy = 1e-2
-iteration = 100
+lambda_cov = 1e-7
+lambda_moy = 1e-3
+iteration = 200
 
 (m_cov, nrj_cov, mes_cov) = cudavenant.SFW(R_y, domain, regul=lambda_cov,
                                            nIter=iteration, mesParIter=True,
@@ -97,7 +97,7 @@ if m_moy.N > 0:
 if __saveVid__:
     cudavenant.gif_experimental(y_bar, mes_cov, super_domain, cross=True,
                                 video='gif', title='filaments-cov')
-    cudavenant.gif_experimental(y_bar_cpu, mes_moy, super_domain, cross=True,
+    cudavenant.gif_experimental(y_bar_cpu, mes_moy[:110], super_domain, cross=True,
                                 video='gif', title='filaments-moy')
 
 
@@ -120,3 +120,35 @@ if __saveVid__:
 # y_bar_cpu = y_bar.to('cpu')
 # cov_pile = cudavenant.covariance_pile(pile)
 # R_y = cov_pile
+
+#%%
+
+ind = torch.where(m_moy.a > 0.1)
+m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
+
+
+#%%
+
+N_ECH = y_bar.shape[0]
+X_GAUCHE = 0
+X_DROIT = 1
+FWMH = 2.2875 / N_ECH
+SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
+domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
+domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
+
+q = 2**2
+super_domain = domain.super_resolve(q, SIGMA/2)
+
+lambda_moy = 1e-3
+iteration = 120
+m_list = []
+
+for i in range(5):
+    (m_moy, nrj_moy, mes_moy) = cudavenant.SFW(pile[i,:] , domain,
+                                               regul=lambda_moy,
+                                               nIter=iteration, mesParIter=True,
+                                               obj='acquis', printInline=True)
+    print(f'm_moy : {m_moy.N} Diracs')
+    m_list.append(m_moy)
+

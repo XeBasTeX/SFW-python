@@ -234,9 +234,13 @@ class Domain2D:
         return(X_big, Y_big)
 
 
-    def super_resolve(self, q=4):
+    def super_resolve(self, q=4, sigma=None):
         super_N_ech = q * self.N_ech
-        return Domain2D(self.x_gauche, self.x_droit, super_N_ech, self.sigma,
+        if sigma == None:
+            super_sigma = self.sigma
+        else:
+            super_sigma = sigma
+        return Domain2D(self.x_gauche, self.x_droit, super_N_ech, super_sigma,
                         dev=self.dev)
 
 
@@ -532,7 +536,7 @@ class Mesure2D:
             raise NameError("Unknown kernel")
         raise NameError("Unknown noise")
 
-    def prune(self, tol=1e-3):
+    def prune(self, tol=1e-4):
         r"""
         Retire les :math:`\delta`-pics avec une très faible amplitude (qui
         s'interpète comme des artefacts numériques).
@@ -1014,7 +1018,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         mse_loss = torch.nn.MSELoss(reduction='sum')
         optimizer = torch.optim.LBFGS([a_param])
         alpha = regul
-        n_epoch = 10
+        n_epoch = 15
 
         for epoch in range(n_epoch):
             def closure():
@@ -1043,8 +1047,12 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         param.requires_grad = True
 
         mse_loss = torch.nn.MSELoss(reduction='sum')
-        optimizer = torch.optim.LBFGS([param], lr=0.1)
-        n_epoch = 20
+        if obj == 'acquis':
+            optimizer = torch.optim.Adam([param])
+            n_epoch = 50
+        else:
+            optimizer = torch.optim.Adam([param])
+            n_epoch = 30
 
         for epoch in range(n_epoch):
             def closure():
@@ -1226,7 +1234,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
             c.set_edgecolor("face")
         plt.colorbar()
         plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
-                    label='Recovered spikes', s=dom.N_ech*m.a)
+                    label='Recovered spikes', s=dom.N_ech*m.a/2)
         plt.legend()
 
         plt.xlabel('X', fontsize=18)
@@ -1453,7 +1461,7 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
     # cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    cont = ax1.imshow(acquis, cmap='seismic')
+    cont = ax1.imshow(acquis, cmap='hot')
     divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
@@ -1463,16 +1471,16 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
 
     ax2 = fig.add_subplot(122)
     # cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    cont_sfw = ax2.imshow(acquis, cmap='seismic')
+    cont_sfw = ax2.imshow(acquis, cmap='hot')
     divider = make_axes_locatable(ax2)
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
     # ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    ax2.imshow(acquis, cmap='seismic')
+    ax2.imshow(acquis, cmap='hot')
     if cross:
         taille = dom.N_ech
         ax2.scatter(taille*m_list[0].x[:, 0], taille * (1-m_list[0].x[:, 1]),
-                    marker='+', s=dom.N_ech, c='orange',
+                    marker='+', s=dom.N_ech*m_list[0].a/10, c='orange',
                     label='Recovered spikes')
         ax2.legend(loc=1, fontsize=20)
     plt.tight_layout()
@@ -1486,11 +1494,13 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
         ax2.set_aspect('equal', adjustable='box')
         # ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
         #              cmap='seismic')
-        ax2.imshow(m_list[k].kernel(dom), cmap='seismic')
+        ax2.imshow(m_list[k].kernel(dom), cmap='hot')
         if cross:
-            ax2.scatter( taille*(m_list[k].x[:, 1]), taille*m_list[k].x[:, 0],
-                        marker='+', s=dom.N_ech, c='orange',
+            ax2.scatter(taille*(m_list[k].x[:, 1]), taille*m_list[k].x[:, 0],
+                        marker='+', s=dom.N_ech*m_list[k].a/10, c='orange',
                         label='Recovered spikes')
+            # ax2.set_ylim([0, 1])
+            # ax2.set_xlim([0, 1])
             ax2.legend(loc=1, fontsize=20)
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
@@ -1545,90 +1555,90 @@ def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
 
 
 
-
-N_ECH = 32
-X_GAUCHE = 0
-X_DROIT = 1
-FWMH = 2.2875 / N_ECH
-SIGMA = 1e-1
-domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
-domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
-
-a = torch.Tensor([1,2])
-x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
-x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
-
-a = torch.tensor([8, 10, 6, 7, 9])
-x = torch.tensor([[0.2, 0.23], [0.90, 0.95],
-                  [0.33, 0.82], [0.33, 0.30],
-                  [0.23, 0.38]])
-
-m = Mesure2D(a, x, dev=device)
-m_cpu = Mesure2D(a, x, dev='cpu')
-# m2 = Mesure2D(a, x2)
-
-# plt.figure()
-# plt.imshow(m.kernel(domain).to('cpu'), extent=[0,1,1,0])
-# plt.title('$\Phi(m)$', fontsize=28)
-# plt.colorbar()
-
-# plt.figure()
-# plt.imshow(m.cov_kernel(domain).to('cpu'), extent=[0,1,1,0])
-# plt.colorbar()
-# plt.title('$\Lambda(m)$', fontsize=28)
-
-
-FOND = 1e-3
-SIGMA_BRUITS = 1e-4
-TYPE_BRUITS = 'unif'
-bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
-
-
-T_ECH = 100
-pile = pile_aquisition(m, domain, bruits_t, T_ECH, dev=device)
-y_bar = pile.mean(0)
-y_bar_cpu = y_bar.to('cpu')
-cov_pile = covariance_pile(pile)
-R_y = cov_pile
-
-# plt.figure()
-# plt.scatter(x[:,0], x[:,1])
-# plt.imshow(cov_pile)
-# plt.colorbar()
-# plt.title('$R_y$', fontsize=28)
-
-
-lambda_cov = 1e-7
-lambda_moy = 1e-5
-iteration = m.N
-
-(m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_cov,
-                                          nIter=iteration, mesParIter=True,
-                                          obj='covar', printInline=True)
-
-(m_moy, nrj_moy, mes_moy) = SFW(y_bar , domain,
-                                regul=lambda_moy,
-                                nIter=iteration, mesParIter=True,
-                                obj='acquis', printInline=True)
-
-
-print(f'm_cov : {m_cov.N} Diracs')
-print(f'm_moy : {m_moy.N} Diracs')
-# print(m_moy)
-
-
-if m_cov.N > 0:
-    certificat_V_cov = etak(m_cov, R_y, domain, lambda_cov,
-                            obj='covar').to('cpu')
-    m_cov.to('cpu')
-    plot_results(m_cov, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_cov,
-                  certificat_V_cov, obj='covar')
-if m_moy.N > 0:
-    certificat_V_moy = etak(m_moy, y_bar, domain, lambda_moy,
-                            obj='acquis').to('cpu')
-    m_moy.to('cpu')
-    plot_results(m_moy, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_moy,
-                  certificat_V_moy, obj='acquis')
+if __name__ == 'main':
+    N_ECH = 32
+    X_GAUCHE = 0
+    X_DROIT = 1
+    FWMH = 2.2875 / N_ECH
+    SIGMA = 1e-1
+    domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
+    domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
+    
+    a = torch.Tensor([1,2])
+    x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
+    x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
+    
+    a = torch.tensor([8, 10, 6, 7, 9])
+    x = torch.tensor([[0.2, 0.23], [0.90, 0.95],
+                      [0.33, 0.82], [0.33, 0.30],
+                      [0.23, 0.38]])
+    
+    m = Mesure2D(a, x, dev=device)
+    m_cpu = Mesure2D(a, x, dev='cpu')
+    # m2 = Mesure2D(a, x2)
+    
+    # plt.figure()
+    # plt.imshow(m.kernel(domain).to('cpu'), extent=[0,1,1,0])
+    # plt.title('$\Phi(m)$', fontsize=28)
+    # plt.colorbar()
+    
+    # plt.figure()
+    # plt.imshow(m.cov_kernel(domain).to('cpu'), extent=[0,1,1,0])
+    # plt.colorbar()
+    # plt.title('$\Lambda(m)$', fontsize=28)
+    
+    
+    FOND = 5e-2
+    SIGMA_BRUITS = 1e-2
+    TYPE_BRUITS = 'unif'
+    bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
+    
+    
+    T_ECH = 50
+    pile = pile_aquisition(m, domain, bruits_t, T_ECH, dev=device)
+    y_bar = pile.mean(0)
+    y_bar_cpu = y_bar.to('cpu')
+    cov_pile = covariance_pile(pile)
+    R_y = cov_pile
+    
+    # plt.figure()
+    # plt.scatter(x[:,0], x[:,1])
+    # plt.imshow(cov_pile)
+    # plt.colorbar()
+    # plt.title('$R_y$', fontsize=28)
+    
+    
+    lambda_cov = 1e-7
+    lambda_moy = 1e-5
+    iteration = m.N
+    
+    (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_cov,
+                                              nIter=iteration, mesParIter=True,
+                                              obj='covar', printInline=True)
+    
+    (m_moy, nrj_moy, mes_moy) = SFW(y_bar , domain,
+                                    regul=lambda_moy,
+                                    nIter=iteration, mesParIter=True,
+                                    obj='acquis', printInline=True)
+    
+    
+    print(f'm_cov : {m_cov.N} Diracs')
+    print(f'm_moy : {m_moy.N} Diracs')
+    # print(m_moy)
+    
+    
+    if m_cov.N > 0:
+        certificat_V_cov = etak(m_cov, R_y, domain, lambda_cov,
+                                obj='covar').to('cpu')
+        m_cov.to('cpu')
+        plot_results(m_cov, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_cov,
+                      certificat_V_cov, obj='covar')
+    if m_moy.N > 0:
+        certificat_V_moy = etak(m_moy, y_bar, domain, lambda_moy,
+                                obj='acquis').to('cpu')
+        m_moy.to('cpu')
+        plot_results(m_moy, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_moy,
+                      certificat_V_moy, obj='acquis')
 
 
 
@@ -1776,4 +1786,5 @@ if m_moy.N > 0:
 
 # Biblio
 # http://sagecal.sourceforge.net/pytorch/index.html
-
+# LazyTensor https://www.kernel-operations.io/keops/_auto_tutorials/a_LazyTensors/plot_lazytensors_a.html
+# 
