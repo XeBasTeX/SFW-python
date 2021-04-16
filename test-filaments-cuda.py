@@ -83,7 +83,7 @@ if m_cov.N > 0:
     certificat_V_cov = cudavenant.etak(m_cov, R_y, domain, lambda_cov,
                                        obj='covar').to('cpu')
     m_cov.to('cpu')
-    cudavenant.plot_experimental(m_cov, domain_cpu, y_bar_cpu, nrj_cov,
+    cudavenant.plot_experimental(m_cov, domain_cpu, y_bar_cpu, nrj_cov[:123],
                                  certificat_V_cov, obj='covar',
                                  saveFig=__saveFig__, title='filaments-covar')
 if m_moy.N > 0:
@@ -95,16 +95,18 @@ if m_moy.N > 0:
                                  saveFig=__saveFig__, title='filaments-moy')
 
 if __saveVid__:
-    cudavenant.gif_experimental(y_bar, mes_cov, super_domain, cross=True,
+    cudavenant.gif_experimental(y_bar, mes_cov[:123], super_domain, cross=True,
                                 video='gif', title='filaments-cov')
-    cudavenant.gif_experimental(y_bar_cpu, mes_moy[:110], super_domain, cross=True,
+    cudavenant.gif_experimental(y_bar_cpu, mes_moy[:102], super_domain, cross=True,
                                 video='gif', title='filaments-moy')
 
 
 # torch.cuda.empty_cache()
 
-# with open('m_moy.pkl', 'wb') as output:
-#     pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
+with open('pickle/m_moy.pkl', 'wb') as output:
+    pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
+with open('pickle/m_cov.pkl', 'wb') as output:
+    pickle.dump(m_cov, output, pickle.HIGHEST_PROTOCOL)
 
 # #%%
 
@@ -125,30 +127,37 @@ if __saveVid__:
 
 ind = torch.where(m_moy.a > 0.1)
 m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
+m_cov = mes_cov[123]
 
+# #%% sfw sur chaque image
 
-#%%
+# N_ECH = y_bar.shape[0]
+# X_GAUCHE = 0
+# X_DROIT = 1
+# FWMH = 2.2875 / N_ECH
+# SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
+# domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
+# domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
-N_ECH = y_bar.shape[0]
-X_GAUCHE = 0
-X_DROIT = 1
-FWMH = 2.2875 / N_ECH
-SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
-domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
-domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
+# q = 2**2
+# super_domain = domain.super_resolve(q, SIGMA/2)
 
-q = 2**2
-super_domain = domain.super_resolve(q, SIGMA/2)
+# lambda_moy = 1e-3
+# iteration = 120
+# m_list = []
 
-lambda_moy = 1e-3
-iteration = 120
-m_list = []
+# for i in range(5):
+#     (m_moy, nrj_moy, mes_moy) = cudavenant.SFW(pile[i,:].float() , domain,
+#                                                regul=lambda_moy,
+#                                                nIter=iteration, mesParIter=True,
+#                                                obj='acquis', printInline=True)
+#     print(f'm_moy : {m_moy.N} Diracs')
+#     m_list.append(m_moy)
 
-for i in range(5):
-    (m_moy, nrj_moy, mes_moy) = cudavenant.SFW(pile[i,:] , domain,
-                                               regul=lambda_moy,
-                                               nIter=iteration, mesParIter=True,
-                                               obj='acquis', printInline=True)
-    print(f'm_moy : {m_moy.N} Diracs')
-    m_list.append(m_moy)
-
+# for i in range(5):
+#     certificat_V_moy = cudavenant.etak(m_moy, y_bar, domain, lambda_moy,
+#                                        obj='acquis').to('cpu')
+#     m_moy.to('cpu')
+#     cudavenant.plot_experimental(m_list[i], domain_cpu, pile[i,:].float(), nrj_moy,
+#                                  certificat_V_moy, obj='acquis',
+#                                  saveFig=False)

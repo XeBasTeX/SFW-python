@@ -15,13 +15,14 @@ __normalis_PSF__ = True
 
 
 import torch
-import numpy as np
 import ot
+import numpy as np
 
 from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
+import pickle
 
 # GPU acceleration if needed
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -1088,6 +1089,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
             print(f'* Énergie : {nrj_vecteur[k]:.3e}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
+            with open('pickle/mes_' + obj + '.pkl', 'wb') as output:
+                pickle.dump(mes_vecteur, output, pickle.HIGHEST_PROTOCOL)
         try:
             if (N_vecteur[-1] == N_vecteur[-2]
                 and N_vecteur[-1] == N_vecteur[-3]
@@ -1461,7 +1464,7 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
     # cont = ax1.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    cont = ax1.imshow(acquis, cmap='hot')
+    cont = ax1.imshow(acquis, cmap='hot', interpolation='nearest')
     divider = make_axes_locatable(ax1)  # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
@@ -1471,7 +1474,7 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
 
     ax2 = fig.add_subplot(122)
     # cont_sfw = ax2.contourf(dom.X, dom.Y, acquis, 100, cmap='seismic')
-    cont_sfw = ax2.imshow(acquis, cmap='hot')
+    cont_sfw = ax2.imshow(acquis, cmap='hot', interpolation='nearest')
     divider = make_axes_locatable(ax2)
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
@@ -1494,7 +1497,7 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
         ax2.set_aspect('equal', adjustable='box')
         # ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
         #              cmap='seismic')
-        ax2.imshow(m_list[k].kernel(dom), cmap='hot')
+        ax2.imshow(m_list[k].kernel(dom), cmap='hot', interpolation='nearest')
         if cross:
             ax2.scatter(taille*(m_list[k].x[:, 1]), taille*m_list[k].x[:, 0],
                         marker='+', s=dom.N_ech*m_list[k].a/10, c='orange',
