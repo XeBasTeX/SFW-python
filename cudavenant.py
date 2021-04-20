@@ -1050,10 +1050,10 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         mse_loss = torch.nn.MSELoss(reduction='sum')
         if obj == 'acquis':
             optimizer = torch.optim.Adam([param])
-            n_epoch = 50
+            n_epoch = 30
         else:
             optimizer = torch.optim.Adam([param])
-            n_epoch = 30
+            n_epoch = 80
 
         for epoch in range(n_epoch):
             def closure():
@@ -1457,7 +1457,7 @@ def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif',
 
 
 def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
-                     title=None):
+                     title=None, obj='covar'):
     '''Montre comment la fonction SFW ajoute ses Dirac'''
     fig = plt.figure(figsize=(20, 10))
 
@@ -1507,7 +1507,12 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
             ax2.legend(loc=1, fontsize=20)
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
-        ax2.set_title(f'Reconstruction at iterate {k}', fontsize=35)
+        if obj =='covar':
+            ax2.set_title(f'$\Lambda(m_{{M,x}})$ at iterate {k}', fontsize=35)
+        elif obj =='acquis':
+            ax2.set_title(f'$\Phi(m_{{a,x}})$ at iterate {k}', fontsize=35)
+        else:
+            raise TypeError("Unknown model objective")
         plt.tight_layout()
 
     anim = FuncAnimation(fig, animate, interval=step, frames=len(m_list)+3,
@@ -1562,7 +1567,6 @@ if __name__ == 'main':
     N_ECH = 32
     X_GAUCHE = 0
     X_DROIT = 1
-    FWMH = 2.2875 / N_ECH
     SIGMA = 1e-1
     domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
     domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
@@ -1593,12 +1597,13 @@ if __name__ == 'main':
     
     FOND = 5e-2
     SIGMA_BRUITS = 1e-2
-    TYPE_BRUITS = 'unif'
+    TYPE_BRUITS = 'gauss'
     bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
     
     
-    T_ECH = 50
+    T_ECH = 500
     pile = pile_aquisition(m, domain, bruits_t, T_ECH, dev=device)
+    pile = pile / torch.max(pile)
     y_bar = pile.mean(0)
     y_bar_cpu = y_bar.to('cpu')
     cov_pile = covariance_pile(pile)
@@ -1611,7 +1616,7 @@ if __name__ == 'main':
     # plt.title('$R_y$', fontsize=28)
     
     
-    lambda_cov = 1e-7
+    lambda_cov = 1e-6
     lambda_moy = 1e-5
     iteration = m.N
     

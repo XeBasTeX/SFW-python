@@ -13,6 +13,7 @@ http://bigwww.epfl.ch/smlm/challenge2016/datasets/MT4.N2.HD/Data/data.html
 
 __saveFig__ = False
 __saveVid__ = False
+__savePickle__ = False
 
 
 from skimage import io
@@ -22,6 +23,7 @@ import pickle
 
 import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+import time
 
 import cudavenant
 
@@ -31,12 +33,16 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "cpu"
 print("[Test] Using {} device".format(device))
 
+# Tic 
+tic = time.time()
+
 # Charger pile et cumulants
-stream = io.imread('sofi_filaments/tubulin_noiseless_lowBg.tif')
-pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,32:,:32]
+stream = io.imread('sofi_filaments/tubulin_noiseless_highBg.tif')
+pile = torch.from_numpy(np.array(stream, dtype='float64')) [:,32:,:32]
 pile_max = torch.max(pile)
 # pile /= torch.sqrt(pile_max)
 pile /= pile_max
+# pile += torch.normal(0, 5e-2, size=pile.shape)
 
 emitters_loc = np.genfromtxt('sofi_filaments/emitters_noiseless_lowBg.csv',
                              delimiter=',')
@@ -46,11 +52,9 @@ m_ax0 = cudavenant.Mesure2D(torch.ones(emitters_loc.shape[0]),
 
 # Calculer les cumulants
 y_bar_cpu = torch.mean(pile.float(), 0)
-y_bar = y_bar_cpu.to(device)
+y_bar = (y_bar_cpu).to(device)
 R_y = cudavenant.covariance_pile(pile).to(device)
 
-
-#%%
 
 N_ECH = y_bar.shape[0]
 X_GAUCHE = 0
@@ -60,18 +64,20 @@ SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
 domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
 domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
-q = 2**2
-super_domain = domain.super_resolve(q, SIGMA/2)
+q = 2**3
+super_domain = domain.super_resolve(q, SIGMA/4)
 
-lambda_cov = 1e-7
+lambda_cov = 1e-6
 lambda_moy = 1e-3
-iteration = 200
+iteration = 40 #160
+
+#%% Calcul SFW
 
 (m_cov, nrj_cov, mes_cov) = cudavenant.SFW(R_y, domain, regul=lambda_cov,
                                            nIter=iteration, mesParIter=True,
                                            obj='covar', printInline=True)
 
-(m_moy, nrj_moy, mes_moy) = cudavenant.SFW(y_bar , domain,
+(m_moy, nrj_moy, mes_moy) = cudavenant.SFW(y_bar - y_bar.min(), domain,
                                            regul=lambda_moy,
                                            nIter=iteration, mesParIter=True,
                                            obj='acquis', printInline=True)
@@ -79,11 +85,18 @@ iteration = 200
 print(f'm_cov : {m_cov.N} Diracs')
 print(f'm_moy : {m_moy.N} Diracs')
 
+
+if __savePickle__:
+    with open('pickle/m_moy.pkl', 'wb') as output:
+        pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
+    with open('pickle/m_cov.pkl', 'wb') as output:
+        pickle.dump(m_cov, output, pickle.HIGHEST_PROTOCOL)
+
 if m_cov.N > 0:
     certificat_V_cov = cudavenant.etak(m_cov, R_y, domain, lambda_cov,
                                        obj='covar').to('cpu')
     m_cov.to('cpu')
-    cudavenant.plot_experimental(m_cov, domain_cpu, y_bar_cpu, nrj_cov[:123],
+    cudavenant.plot_experimental(m_cov, domain_cpu, y_bar_cpu , nrj_cov[:123],
                                  certificat_V_cov, obj='covar',
                                  saveFig=__saveFig__, title='filaments-covar')
 if m_moy.N > 0:
@@ -95,18 +108,17 @@ if m_moy.N > 0:
                                  saveFig=__saveFig__, title='filaments-moy')
 
 if __saveVid__:
-    cudavenant.gif_experimental(y_bar, mes_cov[:123], super_domain, cross=True,
-                                video='gif', title='filaments-cov')
-    cudavenant.gif_experimental(y_bar_cpu, mes_moy[:102], super_domain, cross=True,
-                                video='gif', title='filaments-moy')
+    cudavenant.gif_experimental(y_bar_cpu, mes_cov[:123], super_domain, 
+                                cross=True, video='gif', title='filaments-cov')
+    cudavenant.gif_experimental(y_bar_cpu, mes_moy[:102], super_domain, 
+                                cross=False, video='gif', title='filaments-moy',
+                                obj='acquis')
 
 
 # torch.cuda.empty_cache()
 
-with open('pickle/m_moy.pkl', 'wb') as output:
-    pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
-with open('pickle/m_cov.pkl', 'wb') as output:
-    pickle.dump(m_cov, output, pickle.HIGHEST_PROTOCOL)
+# mes_cov = pickle.load(open("pickle/mo_covar.pkl", "rb" ))
+# mes_moy = pickle.load(open("pickle/mo_acquis.pkl", "rb" ))
 
 # #%%
 
@@ -125,9 +137,11 @@ with open('pickle/m_cov.pkl', 'wb') as output:
 
 #%%
 
+# Evacuer données cheloues
 ind = torch.where(m_moy.a > 0.1)
 m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
-m_cov = mes_cov[123]
+# m_cov = mes_cov[123]
+
 
 # #%% sfw sur chaque image
 
@@ -161,3 +175,8 @@ m_cov = mes_cov[123]
 #     cudavenant.plot_experimental(m_list[i], domain_cpu, pile[i,:].float(), nrj_moy,
 #                                  certificat_V_moy, obj='acquis',
 #                                  saveFig=False)
+
+
+
+tac = time.time() - tic
+print(f"Elapsed time: {tac:.2f} seconds")
