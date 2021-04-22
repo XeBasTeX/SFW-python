@@ -38,7 +38,7 @@ tic = time.time()
 
 # Charger pile et cumulants
 stream = io.imread('sofi_filaments/tubulin_noiseless_highBg.tif')
-pile = torch.from_numpy(np.array(stream, dtype='float64')) [:,32:,:32]
+pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,32:,:32]
 pile_max = torch.max(pile)
 # pile /= torch.sqrt(pile_max)
 pile /= pile_max
@@ -69,7 +69,7 @@ super_domain = domain.super_resolve(q, SIGMA/4)
 
 lambda_cov = 1e-6
 lambda_moy = 1e-3
-iteration = 40 #160
+iteration = 200
 
 #%% Calcul SFW
 
@@ -96,20 +96,26 @@ if m_cov.N > 0:
     certificat_V_cov = cudavenant.etak(m_cov, R_y, domain, lambda_cov,
                                        obj='covar').to('cpu')
     m_cov.to('cpu')
-    cudavenant.plot_experimental(m_cov, domain_cpu, y_bar_cpu , nrj_cov[:123],
-                                 certificat_V_cov, obj='covar',
-                                 saveFig=__saveFig__, title='filaments-covar')
+    cudavenant.plot_experimental(m_cov, domain_cpu, y_bar_cpu , 
+                                 nrj_cov[:123],
+                                 certificat_V_cov, 
+                                 obj='covar',
+                                 saveFig=__saveFig__, 
+                                 title='filaments-covar-global')
 if m_moy.N > 0:
     certificat_V_moy = cudavenant.etak(m_moy, y_bar, domain, lambda_moy,
                                        obj='acquis').to('cpu')
     m_moy.to('cpu')
     cudavenant.plot_experimental(m_moy, domain_cpu, y_bar_cpu, nrj_moy,
-                                 certificat_V_moy, obj='acquis',
-                                 saveFig=__saveFig__, title='filaments-moy')
+                                 certificat_V_moy, 
+                                 obj='acquis',
+                                 saveFig=__saveFig__, 
+                                 title='filaments-moy-global')
 
 if __saveVid__:
-    cudavenant.gif_experimental(y_bar_cpu, mes_cov[:123], super_domain, 
-                                cross=True, video='gif', title='filaments-cov')
+    cudavenant.gif_experimental(y_bar_cpu, mes_cov, super_domain, 
+                                cross=True, video='gif', 
+                                title='filaments-cov-global')
     cudavenant.gif_experimental(y_bar_cpu, mes_moy[:102], super_domain, 
                                 cross=False, video='gif', title='filaments-moy',
                                 obj='acquis')
@@ -117,8 +123,8 @@ if __saveVid__:
 
 # torch.cuda.empty_cache()
 
-# mes_cov = pickle.load(open("pickle/mo_covar.pkl", "rb" ))
-# mes_moy = pickle.load(open("pickle/mo_acquis.pkl", "rb" ))
+# mes_cov = pickle.load(open("pickle/mes_covar.pkl", "rb" ))
+# mes_moy = pickle.load(open("pickle/mes_acquis.pkl", "rb" ))
 
 # #%%
 
@@ -140,7 +146,7 @@ if __saveVid__:
 # Evacuer données cheloues
 ind = torch.where(m_moy.a > 0.1)
 m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
-# m_cov = mes_cov[123]
+m_cov = mes_cov[147]
 
 
 # #%% sfw sur chaque image
@@ -180,3 +186,8 @@ m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
 
 tac = time.time() - tic
 print(f"Elapsed time: {tac:.2f} seconds")
+
+
+nrj_cov = torch.zeros(len(mes_cov))
+for i in range(len(mes_cov)):
+    nrj_cov[i] = mes_cov[i].energie(domain, R_y, lambda_cov)
