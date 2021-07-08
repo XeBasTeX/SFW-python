@@ -907,15 +907,15 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
     Si l'objectif est la covariance :
 
-    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) = \\
-        \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2_2. \\
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) =
+        \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2_2.
             \quad (\mathcal{Q}_\lambda (y))
 
     Si l'objectif est la moyenne :
 
-    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) = \\
-        \lambda |m|(\mathcal{X}) + \\
-            \dfrac{1}{2} ||\overline{y} - \Phi (m)||^2_2.\\
+    .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) =
+        \lambda |m|(\mathcal{X}) +
+            \dfrac{1}{2} ||\overline{y} - \Phi (m)||^2_2.
                 \quad (\mathcal{P}_\lambda (\overline{y}))
 
 
@@ -1114,6 +1114,66 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     if mesParIter:
         return(mesure_k, nrj_vecteur, mes_vecteur)
     return(mesure_k, nrj_vecteur)
+
+
+def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
+    """
+    
+
+    Parameters
+    ----------
+    acquis : ndarray
+            Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    regul : double, optional
+        Paramètre de régularisation :math:`\lambda`. The default is 1e-5.
+    a_k_demi : ndarray
+        Vecteur des amplitudes/luminosités avant optimisation non-convexe.
+    x_k_demi : ndarray
+        Vecteur des positions de la mesure avant optimisation non-convexe.
+    obj : str, optional
+        Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
+        reconstruire sur la moyenne. The default is 'covar'.
+
+    Returns
+    -------
+    a_k_plus : ndarray
+        Vecteur des amplitudes/luminosités solution de l'étape 8 du SFW.
+    x_k_plus : ndarray
+        Vecteur des positions solution de l'étape 8 du SFW.
+
+    """
+    
+    Nk = len(a_k_demi)
+    param = torch.cat((a_k_demi, x_k_demi.reshape(-1)))
+    param.requires_grad = True
+
+    mse_loss = torch.nn.MSELoss(reduction='sum')
+    if obj == 'acquis':
+        optimizer = torch.optim.Adam([param])
+        n_epoch = 30
+    else:
+        optimizer = torch.optim.Adam([param])
+        n_epoch = 80
+
+    for epoch in range(n_epoch):
+        def closure():
+            optimizer.zero_grad()
+            x_tmp = param[Nk+1:].reshape(Nk+1, 2)
+            fidelity = phi_vecteur(param[:Nk+1], x_tmp, dom, obj)
+            loss = 0.5 * mse_loss(acquis, fidelity)
+            loss += regul * param[:1].abs().sum()
+            loss.backward()
+            del fidelity, x_tmp
+            return loss
+
+        optimizer.step(closure)
+
+    a_k_plus = param[:int(len(param)/3)].detach().clone()
+    x_k_plus = param[int(len(param)/3):].detach().clone().reshape(Nk+1, 2)
+    return(a_k_plus, x_k_plus)
 
 
 def wasserstein_metric(mes, m_zer, p_wasser=1):

@@ -38,11 +38,11 @@ tic = time.time()
 
 # Charger pile et cumulants
 stream = io.imread('sofi_filaments/tubulin_noiseless_highBg.tif')
-pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,32:,:32]
+pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,20:52,20:52]
 pile_max = torch.max(pile)
 # pile /= torch.sqrt(pile_max)
 pile /= pile_max
-# pile += torch.normal(0, 5e-2, size=pile.shape)
+pile += torch.normal(0, 5e-2, size=pile.shape)
 
 emitters_loc = np.genfromtxt('sofi_filaments/emitters_noiseless_lowBg.csv',
                              delimiter=',')
@@ -69,7 +69,7 @@ super_domain = domain.super_resolve(q, SIGMA/4)
 
 lambda_cov = 1e-6
 lambda_moy = 1e-3
-iteration = 200
+iteration = 160
 
 #%% Calcul SFW
 
@@ -114,10 +114,10 @@ if m_moy.N > 0:
 
 if __saveVid__:
     cudavenant.gif_experimental(y_bar_cpu, mes_cov, super_domain, 
-                                cross=True, video='gif', 
-                                title='filaments-cov-global')
+                                cross=False, video='mp4', 
+                                title='filaments-cov')
     cudavenant.gif_experimental(y_bar_cpu, mes_moy[:102], super_domain, 
-                                cross=False, video='gif', title='filaments-moy',
+                                cross=False, video='mp4', title='filaments-moy',
                                 obj='acquis')
 
 
@@ -144,9 +144,9 @@ if __saveVid__:
 #%%
 
 # Evacuer données cheloues
-ind = torch.where(m_moy.a > 0.1)
-m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
-m_cov = mes_cov[147]
+# ind = torch.where(m_moy.a > 0.1)
+# m_moy = cudavenant.Mesure2D(m_moy.a[ind], m_moy.x[ind])
+# m_cov = mes_cov[147]
 
 
 # #%% sfw sur chaque image
@@ -188,6 +188,39 @@ tac = time.time() - tic
 print(f"Elapsed time: {tac:.2f} seconds")
 
 
-nrj_cov = torch.zeros(len(mes_cov))
-for i in range(len(mes_cov)):
-    nrj_cov[i] = mes_cov[i].energie(domain, R_y, lambda_cov)
+# nrj_cov = torch.zeros(len(mes_cov))
+# for i in range(len(mes_cov)):
+#     nrj_cov[i] = mes_cov[i].energie(domain, R_y, lambda_cov)
+
+
+# #%%
+
+# import matplotlib.pyplot as plt
+
+# super_domain = domain.super_resolve(q, SIGMA/5)
+
+# fig = plt.figure()
+# ax2 = fig.add_subplot(111)
+# ax2.set_aspect('equal', adjustable='box')
+# # ax2.contourf(dom.X, dom.Y, m_list[k].kernel(dom), 100,
+# #              cmap='seismic')
+
+# ax2.imshow(m_cov.kernel(super_domain), cmap='hot', interpolation='nearest')
+
+# plt.axis('off')
+# plt.tight_layout()
+# plt.savefig('cudavenant-final.pdf', format='pdf', dpi=1000,
+#             bbox_inches='tight', pad_inches=0.03)
+
+# psf = cudavenant.gaussienne_2D(domain.X, domain.Y, SIGMA, undivide=True).numpy()
+# scipy.io.savemat('psf.mat', dict(psf=psf, st=0))
+
+#%%
+
+
+def SNR(signal, acquisition):
+    return 10 * torch.log10(torch.norm(signal) / torch.norm(acquisition - signal))
+
+
+gt = m_ax0.kernel(domain_cpu)
+print(SNR(pile[0,:], y_bar))
