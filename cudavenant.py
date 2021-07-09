@@ -214,7 +214,7 @@ class Domain2D:
 
         """
         grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
-                               2*self.N_ech)
+                                  2*self.N_ech)
         X_big, Y_big = torch.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
 
@@ -298,7 +298,7 @@ class Mesure2D:
 
     def __str__(self):
         '''Donne les infos importantes sur la mesure'''
-        return(f"{self.N} Diracs \nAmplitudes : {self.a}" +
+        return(f"{self.N} δ-pics \nAmplitudes : {self.a}" +
                f"\nPositions : {self.x}")
 
     def to(self, dev):
@@ -819,7 +819,7 @@ def phiAdjoint(acquis, dom, obj='covar'):
 def etak(mesure, acquis, dom, regul, obj='covar'):
     r"""Certificat dual :math:`\eta_\lambda` associé à la mesure
     :math:`m_\lambda`. Ce certificat permet de donner une approximation
-    (sur la grille) de la  position du Dirac de plus forte intensité du
+    (sur la grille) de la position du Dirac de plus forte intensité du
     résidu.
 
     Parameters
@@ -995,6 +995,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     obj : str, optional
         Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
         reconstruire sur la moyenne. The default is 'covar'.
+    printInline : str, optional
+        Ouput the log of the optimizer. The default is True.
 
     Sorties
     -------
@@ -1137,7 +1139,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         x_k = mesure_k.x
         Nk = mesure_k.N
         if printInline:
-            print(f'* Optim non-convexe : {Nk} Diracs')
+            print(f'* Optim non-convexe : {Nk} δ-pics')
 
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
@@ -1174,7 +1176,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
 def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
     """
-    
+    Step 8 of the SFW, to optimize both amplitude and position with fixed
+    number of δ-measures. It's a hard non-convex optimization.
 
     Parameters
     ----------
@@ -1230,6 +1233,86 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
     a_k_plus = param[:int(len(param)/3)].detach().clone()
     x_k_plus = param[int(len(param)/3):].detach().clone().reshape(Nk+1, 2)
     return(a_k_plus, x_k_plus)
+
+
+def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5, 
+                       nIter=80, obj='covar', printInline=True):
+    """
+    Hierher : CUDA support
+
+    Parameters
+    ----------
+    stack : Tensor
+        L'acquisition dynamique :math:`y(x,t)`.
+    dom : Domain2D
+        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
+        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    quadrant_size : int, optional
+        Size of the quadrant to divide the domain. Only suitable to power of 2.
+        The default is 32.
+    regul : TYPE, optional
+        DESCRIPTION. The default is 1e-5.
+    nIter : int, optional
+        Nombre d'itérations maximum pour l'algorithme. The default is 5.
+    obj : str, optional
+        Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
+        reconstruire sur la moyenne. The default is 'covar'.
+    printInline : str, optional
+        Ouput the log: final result of each conquer step. The default is False.
+
+
+    Returns
+    -------
+    m_tot : TYPE
+        DESCRIPTION.
+
+    """
+    m_tot = Mesure2D()
+    GLOBAL_N_ECH = stack.size(-1)
+    q = int(GLOBAL_N_ECH / quadrant_size)
+    if printInline:
+        print(f'\n[+] Beginning loop with {quadrant_size} × {quadrant_size} ' +
+              f'samples from the {GLOBAL_N_ECH} × {GLOBAL_N_ECH} image')
+    for i in range(q):
+        for j in range(q):
+            x_ht_gche = quadrant_size * i
+            x_ht_droit = x_ht_gche + quadrant_size  # commande la ligne
+            x_bas_gche = quadrant_size * j
+            x_bas_droite = x_bas_gche + quadrant_size  # commande la colonne
+
+            y_tmp = stack[:, x_ht_gche:x_ht_droit, x_bas_gche:x_bas_droite]
+            y_tmp = y_tmp / y_tmp.max()
+            pile_moy_tmp = y_tmp.mean(0)
+
+            domain = Domain2D(0, 1, quadrant_size, dom.sigma)
+            if obj == 'covar':
+                R_y_tmp = covariance_pile(y_tmp, y_bar)
+                (m_tmp, nrj_tmp) = SFW(R_y_tmp, domain,
+                                       regul=regul,
+                                       nIter=nIter,
+                                       obj='covar',
+                                       printInline=False)
+            if obj == 'acquis':
+                y_bar_tmp = pile_moy_tmp.float()
+                (m_tmp, nrj_tmp) = SFW(y_bar_tmp, domain,
+                                       regul=regul,
+                                       nIter=nIter,
+                                       obj='acquis',
+                                       printInline=False)
+
+            print(f'* quadrant ({i},{j}) = [{x_ht_gche},{x_ht_droit}] x ' +
+                  f'[{x_bas_gche},{x_bas_droite}] : {m_tmp.N} δ-peaks')
+
+            x_redress = (m_tmp.x[:, 0]*quadrant_size
+                         + x_ht_gche)/GLOBAL_N_ECH
+            y_redress = (m_tmp.x[:, 1]*quadrant_size
+                          + x_bas_gche)/GLOBAL_N_ECH
+            pos = torch.tensor((list(zip(x_redress, y_redress))))
+            m_rajout = Mesure2D(m_tmp.a, pos)
+            m_tot += m_rajout
+    if printInline:
+        print(f'[+] End of optmization: m_tot = {m_tot.N} δ-peaks')
+    return m_tot
 
 
 def wasserstein_metric(mes, m_zer, p_wasser=1):
@@ -1663,8 +1746,9 @@ def compare_covariance(m, covariance, dom, saveFig=True):
     fig.colorbar(lambada)
     ax2.set_title(r'$R_y$', fontsize=40)
     if saveFig:
-        plt.savefig('fig/R_x-R_y-filaments.pdf', format='pdf', dpi=1000,
+        plt.savefig('fig/compared_covariances.pdf', format='pdf', dpi=1000,
                     bbox_inches='tight', pad_inches=0.03)
+
 
 def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
     plt.scatter(m_ax0.x[0:-1:reduc, 0], 1 - m_ax0.x[0:-1:reduc, 1],
@@ -1746,8 +1830,8 @@ if __name__ == 'main':
                                     obj='acquis', printInline=True)
     
     
-    print(f'm_cov : {m_cov.N} Diracs')
-    print(f'm_moy : {m_moy.N} Diracs')
+    print(f'm_cov : {m_cov.N} δ-pics')
+    print(f'm_moy : {m_moy.N} δ-pics')
     # print(m_moy)
     
     
