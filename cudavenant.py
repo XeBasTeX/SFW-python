@@ -167,6 +167,9 @@ class Domain2D:
     def get_domain(self):
         return(self.X, self.Y)
 
+    def size(self):
+        return self.N_ech
+
     def compute_square_mesh(self):
         r"""
         Renvoie les grilles discrétisant le domaine :math:`\mathcal{X}` à N_ech
@@ -475,6 +478,59 @@ class Mesure2D:
             return torch.linalg.norm(self.a, ord=1)
         except ValueError:
             return 0
+
+    def export(self, dom, obj='covar', title=None, legend=False):
+        r"""
+        Export the measure plotted through a kernel
+
+        Parameters
+        ----------
+        dom : Domain2D
+            Domaine sur lequel va être calculée l'acquisition de :math:`m` dans
+            :math:`\mathrm{L}^2(\mathcal{X})`.
+        obj : str, optional
+            Soit 'covar' pour reconstruire sur la covariance soit 'acquis'
+            pour reconstruire sur la moyenne. The default is 'covar'.
+        title : str, optional
+            Title of the ouput image file. The default is None.
+        legend : boolean, optional
+            Boolean: should a legend be written. The default is True.
+
+        Raises
+        ------
+        TypeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        result = self.kernel(dom)
+        if title is None:
+            title = 'fig/reconstruction/experimentals.png'
+        elif isinstance(title, str):
+            title = 'fig/reconstruction/' + title + '.png'
+        else:
+            raise TypeError("You ought to give a str type name for the plot")
+        if legend == True:
+            if obj == 'covar':
+                plt.title(r'Reconstruction $\Phi(m_{M,x})$ ' +
+                          f'with N = {m.N}', fontsize=20)
+            elif obj == 'acquis':
+                plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
+                          f'with N = {m.N}', fontsize=20)
+            plt.imshow(result, cmap='hot')
+            plt.colorbar()
+            plt.xlabel('X', fontsize=18)
+            plt.ylabel('Y', fontsize=18)
+            plt.colorbar()
+            plt.show()
+            plt.savefig(title, format='pdf', dpi=1000,
+                    bbox_inches='tight', pad_inches=0.03)
+        else:
+            plt.imsave(title, result, cmap='hot')
+
 
     def energie(self, dom, acquis, regul, obj='covar', bruits='gauss'):
         r"""

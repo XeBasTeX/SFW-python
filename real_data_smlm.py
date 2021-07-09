@@ -33,7 +33,7 @@ tic = time.time()
 
 # Charger pile et cumulants
 stream = io.imread('real_data_smlm/real_data_smlm.tif')
-pile = torch.from_numpy(np.array(stream, dtype='float64')) [:,10:40,10:40]
+pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,10:40,10:40]
 pile_max = torch.max(pile)
 pile /= pile_max
 imageio.mimwrite('real_data_smlm/real_data_smlm_cropped.tif',pile)
@@ -48,29 +48,29 @@ R_y = cudavenant.covariance_pile(pile).to(device)
 N_ECH = y_bar.shape[0]
 X_GAUCHE = 0
 X_DROIT = 1
-# FWMH = 2.2875 / N_ECH
 FWMH = 351.8 / 100 / N_ECH
 SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
+
 domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
 domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
 q = 2**3
-super_domain = domain.super_resolve(q, SIGMA/4)
+super_domain = domain.super_resolve(q, SIGMA/3)
 
 lambda_cov = 1e-6
-lambda_moy = 5e-4
+lambda_moy = 2e-4
 iteration = 150
 
 
 #%% Calcul SFW
 
 (m_cov, nrj_cov, mes_cov) = cudavenant.SFW(R_y, domain, regul=lambda_cov,
-                                           nIter=iteration, mesParIter=True,
+                                           nIter=0, mesParIter=True,
                                            obj='covar', printInline=True)
 
 (m_moy, nrj_moy, mes_moy) = cudavenant.SFW(y_bar - y_bar.min(), domain,
                                            regul=lambda_moy,
-                                           nIter=iteration, mesParIter=True,
+                                           nIter=800, mesParIter=True,
                                            obj='acquis', printInline=True)
 
 print(f'm_cov : {m_cov.N} Diracs')
@@ -78,7 +78,7 @@ print(f'm_moy : {m_moy.N} Diracs')
 
 
 if __savePickle__:
-    with open('pickle/real_data_smlm_m_moy.pkl', 'wb') as output:
+    with open('pickle/real_data_smlm_moy.pkl', 'wb') as output:
         pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
     with open('pickle/real_data_smlmm_cov.pkl', 'wb') as output:
         pickle.dump(m_cov, output, pickle.HIGHEST_PROTOCOL)
@@ -93,6 +93,10 @@ if m_cov.N > 0:
                                  obj='covar',
                                  saveFig=__saveFig__, 
                                  title='real-data-smlm-covar')
+    if __saveFig__:
+        m_cov.export(super_domain, title="real_data_smlm_cov_global")
+
+
 if m_moy.N > 0:
     certificat_V_moy = cudavenant.etak(m_moy, y_bar, domain, lambda_moy,
                                        obj='acquis').to('cpu')
@@ -102,6 +106,9 @@ if m_moy.N > 0:
                                  obj='acquis',
                                  saveFig=__saveFig__, 
                                  title='real-data-smlm-moy')
+    if __saveFig__:
+        m_moy.export(super_domain, title="real_data_smlm_moy_global")
+
 
 if __saveVid__:
     cudavenant.gif_experimental(y_bar_cpu, mes_cov, super_domain, 
