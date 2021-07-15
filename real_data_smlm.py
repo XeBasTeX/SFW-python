@@ -5,8 +5,8 @@ Created on Wed Jul  7 07:54:36 2021
 @author: blaville
 """
 
-__saveFig__ = False
-__saveVid__ = True
+__saveFig__ = True
+__saveVid__ = False
 __savePickle__ = False
 
 
@@ -111,7 +111,7 @@ iteration = 50
 
 
 # if __saveVid__:
-#     cudavenant.gif_experimental(y_bar_cpu, mes_cov, super_domain, 
+#     cudavenant.gif_experimental(y_bar_cpu, mSes_cov, super_domain, 
 #                                 cross=False, video='mp4', 
 #                                 title='real_data_smlm_cov')
 #     cudavenant.gif_experimental(y_bar_cpu, mes_moy, super_domain, 
@@ -125,14 +125,33 @@ iteration = 50
 
 #%%
 
-# m_cov = cudavenant.divide_and_conquer(pile, domain, obj='covar')
-m_moy = cudavenant.divide_and_conquer(pile, domain, obj='acquis',
-                                      quadrant_size=64, nIter=150)
+m_cov = cudavenant.divide_and_conquer(pile, domain, obj='covar',
+                                          quadrant_size=64, nIter=250)
+# (m_cov, _) = cudavenant.SFW(R_y, domain,
+#                             regul=lambda_cov, nIter=10, mes_init=m_cov_div, 
+#                             mesParIter=False, obj='covar', printInline=True)
+plt.imshow(m_cov.kernel(super_domain))
+
+
+
+m_moy_div = cudavenant.divide_and_conquer(pile, domain, obj='acquis',
+                                          quadrant_size=32, nIter=110)
+(m_moy, _) = cudavenant.SFW(y_bar - y_bar.min(), domain,
+                            regul=lambda_moy, nIter=10, mes_init=m_moy_div, 
+                            mesParIter=False, obj='acquis', printInline=True)
+plt.imshow(m_moy.kernel(super_domain))
+
+if __savePickle__:
+    with open('pickle/real_data_smlmm_cov_global.pkl', 'wb') as output:
+        pickle.dump(m_cov, output, pickle.HIGHEST_PROTOCOL)
+    with open('pickle/real_data_smlm_moy_global.pkl', 'wb') as output:
+        pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
+
+
 
 if __saveFig__:
-    # m_cov.export(super_domain, title="real_data_smlm_cov_reign")
+    m_cov.export(super_domain, title="real_data_smlm_cov_reign")
     m_moy.export(super_domain, title="real_data_smlm_moy_reign")
 
 tac = time.time() - tic
 print(f"[+] Elapsed time: {tac:.2f} seconds")
-

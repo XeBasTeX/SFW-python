@@ -1094,6 +1094,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
             optimizer.step(closure)
 
         a_k_demi = a_param.detach().clone() # pour ne pas copier l'arbre
+        del a_param, optimizer, mse_loss
 
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
         # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
@@ -1128,6 +1129,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
         a_k_plus = param[:int(len(param)/3)].detach().clone()
         x_k_plus = param[int(len(param)/3):].detach().clone().reshape(Nk+1, 2)
+        del param, optimizer, mse_loss
+
         # print('* a_k_plus : ' + str(np.round(a_k_plus, 2)))
         # print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
 
@@ -1178,6 +1181,8 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
     """
     Step 8 of the SFW, to optimize both amplitude and position with fixed
     number of δ-measures. It's a hard non-convex optimization.
+    
+    Hierher : ne marche pas
 
     Parameters
     ----------
@@ -1232,7 +1237,7 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
 
     a_k_plus = param[:int(len(param)/3)].detach().clone()
     x_k_plus = param[int(len(param)/3):].detach().clone().reshape(Nk+1, 2)
-    return(a_k_plus, x_k_plus)
+    return (Mesure2D(a_k_plus, x_k_plus))
 
 
 def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5, 
@@ -1286,15 +1291,16 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
 
             domain = Domain2D(0, 1, quadrant_size, dom.sigma)
             if obj == 'covar':
-                R_y_tmp = covariance_pile(y_tmp, y_bar)
+                R_y_tmp = covariance_pile(y_tmp)
                 (m_tmp, nrj_tmp) = SFW(R_y_tmp, domain,
                                        regul=regul,
                                        nIter=nIter,
                                        obj='covar',
-                                       printInline=False)
+                                       printInline=True)
             if obj == 'acquis':
                 y_bar_tmp = pile_moy_tmp.float()
-                (m_tmp, nrj_tmp) = SFW(y_bar_tmp, domain,
+                (m_tmp, nrj_tmp) = SFW(y_bar_tmp - y_bar_tmp.min(), 
+                                       domain,
                                        regul=regul,
                                        nIter=nIter,
                                        obj='acquis',
@@ -1316,9 +1322,32 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
 
 
 def wasserstein_metric(mes, m_zer, p_wasser=1):
-    '''Retourne la p--distance de Wasserstein partiel (Partial Gromov-
+    """
+    Retourne la :math:`p`-distance de Wasserstein partiel (Partial Gromov-
     Wasserstein) pour des poids égaux (pas de prise en compte de la
-    luminosité)'''
+    luminosité)
+
+    Parameters
+    ----------
+    mes : Mesure2D
+        A measure :math:`m` (typically the reconstructed one).
+    m_zer : Mesure2D
+        A measure :math:`m_0` (typically the reference/ground-truth one).
+    p_wasser : int, optional
+        Order of the Wasserstein distance :math:`\mathcal{W}^p`. Classic values
+        are :math:`p = 1,2`. The default is 1.
+
+    Raises
+    ------
+    ValueError
+        The order :math:`p` you choose is not supported by the `ot` package.
+
+    Returns
+    -------
+    W : float64
+        The scalar value :math:`\mathcal{W}^p(m,m_0)`.
+
+    """
     if p_wasser == 1:
         M = ot.dist(mes.x, m_zer.x, metric='euclidean')
     elif p_wasser == 2:
@@ -1332,6 +1361,32 @@ def wasserstein_metric(mes, m_zer, p_wasser=1):
 
 
 def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
+    """
+    Compute the cost matrix of order :math:`p` in the optimal transport 
+    problem.
+
+    Parameters
+    ----------
+    mes : Mesure2D
+        A measure :math:`m` (typically the reconstructed one).
+    m_zer : Mesure2D
+        A measure :math:`m_0` (typically the reference/ground-truth one).
+    p_wasser : int, optional
+        Order of the Wasserstein distance :math:`\mathcal{W}^p`. Classic values
+        are :math:`p = 1,2`. The default is 1.
+
+    Raises
+    ------
+    ValueError
+        The order :math:`p` you choose is not supported by the `ot` package.
+
+    Returns
+    -------
+    M : ndarray
+        The matrix of transport cost (known as the transport plan 
+        :math:`\gamma` in the litterature).
+
+    """
     if p_wasser == 1:
         M = ot.dist(mes.x, m_zer.x, metric='euclidean')
         return M
@@ -1568,7 +1623,6 @@ def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
     anim = FuncAnimation(fig, animate, interval=400,
                          frames=len(pile_acquis)+3,
                          blit=False)
-
     plt.draw()
 
     if title is None:
