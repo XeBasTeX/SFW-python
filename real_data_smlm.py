@@ -7,7 +7,7 @@ Created on Wed Jul  7 07:54:36 2021
 
 __saveFig__ = True
 __saveVid__ = False
-__savePickle__ = False
+__savePickle__ = True
 
 
 import os
@@ -33,10 +33,10 @@ tic = time.time()
 
 # Charger pile et cumulants
 stream = io.imread('real_data_smlm/real_data_smlm.tif')
-pile = torch.from_numpy(np.array(stream, dtype='float64'))
+pile = torch.from_numpy(np.array(stream, dtype='float64')) [:,40:120,32:112]
 pile_max = torch.max(pile)
 pile /= pile_max
-imageio.mimwrite('real_data_smlm/real_data_smlm_cropped.tif',pile)
+imageio.mimwrite('real_data_smlm/real_data_smlm_cropped.tif', pile)
 
 
 # Calculer les cumulants
@@ -60,7 +60,7 @@ super_domain = domain.super_resolve(q, SIGMA/3)
 lambda_cov = 1e-6
 lambda_moy = 2e-4
 iteration = 50
-
+plt.imshow(y_bar)
 
 # #%% Calcul SFW
 
@@ -125,33 +125,33 @@ iteration = 50
 
 #%%
 
-m_cov = cudavenant.divide_and_conquer(pile, domain, obj='covar',
-                                          quadrant_size=64, nIter=250)
-# (m_cov, _) = cudavenant.SFW(R_y, domain,
-#                             regul=lambda_cov, nIter=10, mes_init=m_cov_div, 
-#                             mesParIter=False, obj='covar', printInline=True)
+# m_cov = cudavenant.divide_and_conquer(pile, domain, obj='covar',
+#                                           quadrant_size=64, nIter=250)
+(m_cov, _) = cudavenant.SFW(R_y, domain,
+                            regul=lambda_cov, nIter=200, 
+                            mesParIter=False, obj='covar', printInline=True)
 plt.imshow(m_cov.kernel(super_domain))
 
 
 
-m_moy_div = cudavenant.divide_and_conquer(pile, domain, obj='acquis',
-                                          quadrant_size=32, nIter=110)
-(m_moy, _) = cudavenant.SFW(y_bar - y_bar.min(), domain,
-                            regul=lambda_moy, nIter=10, mes_init=m_moy_div, 
-                            mesParIter=False, obj='acquis', printInline=True)
-plt.imshow(m_moy.kernel(super_domain))
+# m_moy_div = cudavenant.divide_and_conquer(pile, domain, obj='acquis',
+#                                           quadrant_size=32, nIter=110)
+# (m_moy, _) = cudavenant.SFW(y_bar - y_bar.min(), domain,
+#                             regul=lambda_moy, nIter=10, mes_init=m_moy_div, 
+#                             mesParIter=False, obj='acquis', printInline=True)
+# plt.imshow(m_moy.kernel(super_domain))
 
 if __savePickle__:
-    with open('pickle/real_data_smlmm_cov_global.pkl', 'wb') as output:
+    with open('pickle/real_data_smlmm_cov_cropped.pkl', 'wb') as output:
         pickle.dump(m_cov, output, pickle.HIGHEST_PROTOCOL)
-    with open('pickle/real_data_smlm_moy_global.pkl', 'wb') as output:
-        pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
+    # with open('pickle/real_data_smlm_moy_global.pkl', 'wb') as output:
+    #     pickle.dump(m_moy, output, pickle.HIGHEST_PROTOCOL)
 
 
 
 if __saveFig__:
-    m_cov.export(super_domain, title="real_data_smlm_cov_reign")
-    m_moy.export(super_domain, title="real_data_smlm_moy_reign")
+    m_cov.export(super_domain, title="real_data_smlm_cov_cropped")
+    # m_moy.export(super_domain, title="real_data_smlm_moy_reign")
 
 tac = time.time() - tic
 print(f"[+] Elapsed time: {tac:.2f} seconds")
