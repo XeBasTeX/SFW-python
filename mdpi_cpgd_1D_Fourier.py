@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Sep  2 09:44:00 2021
+Created on Fri Sep 10 10:23:27 2021
 
 @author: blaville
 """
-
 
 __author__ = 'Bastien'
 __team__ = 'Morpheme'
@@ -44,6 +43,12 @@ def gaussienne(domain):
     return np.sqrt(2*np.pi*sigma**2)*np.exp(-np.power(domain,2)/(2*sigma**2))
 
 
+def grad_gaussienne(domain):
+    '''Gaussienne centrée en 0'''
+    return - (domain * np.sqrt(2*np.pi) / sigma *
+              np.exp(-np.power(domain,2)/(2*sigma**2)))
+
+
 def double_gaussienne(domain):
     '''Gaussienne au carré centrée en 0'''
     return np.power(gaussienne(domain),2)
@@ -61,6 +66,11 @@ def fourier_measurements(x, fc):
     result = np.exp(-2* ii * np.pi * (fc_vect[:,None] @ x[:,None].T))
     return result
 
+
+def grad_fourier_measurements(x, fc):
+    ii = np.complex(0,1)
+    result = - 2* ii * np.pi * fourier_measurements(x, fc)
+    return result
 
 
 class Mesure:
@@ -108,7 +118,7 @@ class Mesure:
 
     def torus(self, current_fig=False, subplot=False):
         if subplot == True:
-            ax = fig.add_subplot(224, projection='3d')
+            ax = current_fig.add_subplot(224, projection='3d')
         else:
             current_fig = plt.figure()
             ax = current_fig.add_subplot(111, projection='3d')
@@ -258,28 +268,14 @@ def phiAdjoint(acquis, domain, noyau='gaussien'):
         raise TypeError
 
 
-def etaW(x, N, sigma, noyau='gaussien'):
-    '''Certificat \eta_W dans le cas gaussien, avec formule analytique'''
-    x = x/sigma # Normalisation
-    tmp = 0
-    for k in range(1,N+1):
-        tmp += (x**(2*k))/(2**(2*k)*np.math.factorial(k))
-    eta = np.exp(-x**2/4)*tmp
-    return eta
-
-
-def etaWx0(x, x0, mesure, sigma, noyau='gaussien'):
-    '''Certificat \eta_W dans le cas gaussien'''
-    N = mesure.N
-    x = x/sigma # Normalisation
-    tmp = np.zeros(x.size)
-    for k in range(N):
-        tmp += ((x - x0)**(2*k))/((2*sigma)**(2*k)*np.math.factorial(k))
-    eta = np.exp(-np.power(x - x0, 2)/4)*tmp
-    return eta
-
-
-# plt.plot(X,etaW(X,5,0.1))
+def gradPhiAdjoint(acquis, domain, noyau='gaussien'):
+    if noyau == 'gaussien':
+        return np.convolve(grad_gaussienne(domain),y,'valid')/N_ech
+    if noyau == 'fourier':
+        cont_fct = grad_fourier_measurements(domain, F_C).T @ acquis
+        return np.flip(np.real(cont_fct))
+    else:
+        raise TypeError
 
 
 def etak(mesure, acquis, regul, noyau='gaussien'):
@@ -293,76 +289,15 @@ def etak(mesure, acquis, regul, noyau='gaussien'):
         return eta
 
 
-def SFW(acquis, regul=1e-5, nIter=5, noyau='gaussien'):
-    '''y acquisition et nIter nombre d'itérations'''
-    a_k = []
-    x_k = []
-    mesure_k = Mesure(a_k, x_k)    # Msure discrète vide
-    Nk = 0                      # Taille de la mesure discrète
-    nrj_vecteur = np.zeros(nIter)
-    for k in range(nIter):
-        print('\n' + 'Etape numéro ' + str(k))
-        eta_V_k = etak(mesure_k, acquis, regul, noyau=noyau)
-        N_ech_eta = len(eta_V_k)
-        x_star_index = np.argmax(np.abs(eta_V_k))
-        x_star = x_star_index / N_ech_eta
-        print(f'* x^* = {x_star} max à {np.round(eta_V_k[x_star_index], 2)}')
-        
-        # Condition d'arrêt (étape 4)
-        if np.abs(eta_V_k[x_star_index]) < 1:
-            nrj_vecteur[k] = mesure_k.energie(X, y, regul)
-            print(f'* Energie : {nrj_vecteur[k]:.3f}')
-            print("\n\n---- Condition d'arrêt ----")
-            return(mesure_k, nrj_vecteur[:k])
-        else:
-            mesure_k_demi = Mesure([],[])
-            x_k_demi = x_k + [x_star]
-
-            # On résout LASSO (étape 7)
-            def lasso(a):
-                attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a,x_k_demi,X,
-                                                             noyau=noyau))
-                parcimonie = regul*np.linalg.norm(a, 1)
-                return(attache + parcimonie)
-            # lasso = lambda a : 0.5*np.linalg.norm(y - phi_vecteur(a,x_k_demi,len(y))) + regul*np.linalg.norm(a, 1)
-            res = scipy.optimize.minimize(lasso, np.ones(Nk+1)) # renvoie un array (et pas une liste)
-            a_k_demi = res.x.tolist()
-            print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
-            mesure_k_demi += Mesure(a_k_demi,x_k_demi)
-            print('* Mesure_k_demi : ' +  str(mesure_k_demi))
-
-            # On résout double LASSO non-convexe (étape 8)
-            def lasso_double(params):
-                a = params[:int(len(params)/2)]
-                x = params[int(len(params)/2):]
-                attache = 0.5*np.linalg.norm(acquis - phi_vecteur(a,
-                                                             x,
-                                                             X,
-                                                             noyau=noyau))
-                parcimonie = regul*np.linalg.norm(a, 1)
-                return(attache + parcimonie)
-
-            initial_guess = a_k_demi + x_k_demi
-            res = scipy.optimize.minimize(lasso_double, initial_guess,
-                                          method='BFGS',
-                                          options={'disp': True})
-            a_k_plus = (res.x[:int(len(res.x)/2)]).tolist()
-            x_k_plus = (res.x[int(len(res.x)/2):]).tolist()
-
-            # Mise à jour des paramètres avec retrait des Dirac nuls
-            mesure_k = Mesure(a_k_plus, x_k_plus)
-            mesure_k = mesure_k.prune()
-            a_k = mesure_k.a
-            x_k = mesure_k.x
-            Nk = mesure_k.N
-
-            # Graphe et énergie
-            # mesure_k.graphe()
-            nrj_vecteur[k] = mesure_k.energie(X, acquis, regul, noyau=noyau)
-            print(f'* Énergie : {nrj_vecteur[k]:.3f}')
-            
-    print("\n\n---- Fin de la boucle ----")
-    return(mesure_k, nrj_vecteur)
+def grad_etak(mesure, acquis, regul, noyau='gaussien'):
+    if noyau == 'gaussien':
+        eta = 1/regul*phiAdjoint(acquis - phi(mesure, X, noyau=noyau),
+                                 X_big, noyau=noyau)
+        return eta
+    if noyau == 'fourier':
+        eta = 1/regul*phiAdjoint(acquis - phi(mesure, X, noyau=noyau),
+                                 X, noyau=noyau)
+        return eta
 
 
 a0 = [1, 1, -1]
@@ -370,83 +305,89 @@ m_ax0 = Mesure(a0, x0)
 niveaubruits = 0.12
 
 noy = 'fourier'
-y0 = m_ax0.kernel(niveaubruits, noyau=noy)
+y0 = m_ax0.kernel(X, noyau=noy)
 y = m_ax0.acquisition(niveaubruits, noyau=noy)
 certes0 = phiAdjoint(y0, X, noyau=noy)
 certes = phiAdjoint(y, X, noyau=noy)
-plt.plot(X, certes0, label='$\Phi^* y_0$')
-plt.plot(X, certes, label='$\Phi^* y$')
-plt.stem(x0, 10*np.array(a0), basefmt=" ", use_line_collection=True,
-         linefmt='k--', markerfmt='ko')
+
+if noy == 'fourier':
+    plt.plot(X, certes0, label='$\Phi^* y_0$')
+    plt.plot(X, certes, label='$\Phi^* y$')
+    plt.stem(x0, 10*np.array(a0), basefmt=" ", use_line_collection=True,
+             linefmt='k--', markerfmt='ko')
+    plt.legend()
+    plt.grid()
+elif noy == 'gaussien':
+    plt.plot(X, y0, label='$\Phi^* y_0$')
+    plt.plot(X, y, label='$\Phi^* y$')
+    plt.stem(x0, np.array(a0), basefmt=" ", use_line_collection=True,
+             linefmt='k--', markerfmt='ko')
+    plt.legend()
+    plt.grid()
+
+
+
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return array[idx]
+
+
+def CPGD(acquis, domain, λ=0.3, α=1, β=1, nIter=10, nParticles=4, 
+         noyau='fourier'):
+
+    ss = lambda r : np.abs(r) * r
+
+    θ_0 = np.linspace(xgauche, xdroit, nParticles)
+    r_0 = 0.1*np.ones(nParticles)
+    𝜈_0 = Mesure(r_0, θ_0)
+    grad_r, grad_θ = np.zeros(nParticles), np.zeros(nParticles)
+
+    r_k, θ_k, 𝜈_k = r_0, θ_0, 𝜈_0
+    𝜈_vecteur = [0] * (nIter)
+    r_vecteur, θ_vecteur = np.zeros((nIter, nParticles)), np.zeros((nIter, nParticles))
+
+    # Loop over the gradient descent
+    for k in range(nIter):
+        r_vecteur[k,:] = r_k
+        𝜈_vecteur[k] = 𝜈_k
+        θ_vecteur[k,:] = θ_k
+        for l in range(nParticles):
+            simul_r = np.sum(
+                ss(r_k) * fourier_measurements(θ_k[l] - θ_k, F_C)) / nParticles
+            obs_r = np.sum(fourier_measurements(
+                θ_k[l] - domain, F_C).T * ss(acquis))
+            grad_r[l] = np.sign(r_k[l]) * np.real(simul_r - obs_r) + λ
+
+            simul_der_r = np.sum(
+                ss(r_k) * grad_fourier_measurements(θ_k[l] - θ_k,
+                                                    F_C)) / nParticles
+            obs_der_r = np.sum(grad_fourier_measurements(
+                θ_k[l] - domain, F_C).T * ss(acquis))
+            grad_θ[l] = np.sign(r_k[l]) * np.real(simul_der_r - obs_der_r)
+
+        # Update gradient flow
+        r_k *= np.exp(2 * α * λ * grad_r)
+        θ_k += β * λ * grad_θ
+
+        # Store iterated measure 𝜈
+        𝜈_k = Mesure(r_k, θ_k)
+    return (𝜈_k, 𝜈_vecteur, r_vecteur, θ_vecteur)
+
+
+𝜈, 𝜈_itere, r_itere, θ_itere = CPGD(y0, X, noyau='fourier')
+plt.figure()
+plt.stem(𝜈.x, 𝜈.a, label='$\\nu_t$', linefmt='r--',
+         markerfmt='ro', use_line_collection=True, basefmt=" ")
+plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='k--',
+         markerfmt='ko', use_line_collection=True, basefmt=" ")
+for l in range(len(𝜈.a)):
+    plt.plot(θ_itere[:,l], r_itere[:,l], 'b', linewidth=1)
 plt.legend()
-plt.grid()
+plt.plot((-1, 2), (0, 0), 'k-', linewidth=1)
+plt.xlim([-0.1,1.1])
 
 
-#%%
 
 
-if __name__ == '__main__':
-    (m_sfw, nrj_sfw) = SFW(y, regul=lambda_regul, nIter=5, noyau=noy)
-    print('On a retrouvé m_ax ' + str(m_sfw))
-    certificat_V = etak(m_sfw, y, lambda_regul, noyau=noy)
-    print('On voulait retrouver m_ax0 ' + str(m_ax0))
-    try:
-        wasser = wasserstein_distance(m_sfw.x, m_ax0.x, m_sfw.a, m_ax0.a)
-        print(f'2-distance de Wasserstein : {wasser}')
-    except ValueError:
-        print("[!] Flat metric is currently only implemented for " +
-              "non-negative spikes")
-
-    if m_sfw != 0:
-        # plt.figure(figsize=(21,4))
-        fig = plt.figure(figsize=(15,12))
-        
-        plt.subplot(221)
-        if noy == 'fourier':
-            plt.plot(X, certes, label='$y$', linewidth=1.7)
-        elif noy == 'gaussien':
-            plt.plot(X,y, label='$y$', linewidth=1.7)
-        plt.stem(m_sfw.x, m_sfw.a, label='$m_{a,x}$', linefmt='C1--', 
-                  markerfmt='C1o', use_line_collection=True, basefmt=" ")
-        plt.stem(m_ax0.x, m_ax0.a, label='$m_{a_0,x_0}$', linefmt='C2--', 
-                  markerfmt='C2o', use_line_collection=True, basefmt=" ")
-        # plt.xlabel('$x$', fontsize=18)
-        plt.ylabel(f'Lumino à $\sigma_B=${niveaubruits:.1e}', fontsize=18)
-        plt.title('$m_{a,x}$ contre la VT $m_{a_0,x_0}$', fontsize=20)
-        plt.grid()
-        plt.legend()
-        
-        plt.subplot(222)
-        if noy == 'fourier':
-            plt.plot(X, certificat_V, 'r', linewidth=2)
-        elif noy == 'gaussien':
-            plt.plot(X_certif, certificat_V, 'r', linewidth=2)
-        plt.axhline(y=1, color='gray', linestyle='--', linewidth=2.5)
-        plt.axhline(y=-1, color='gray', linestyle='--', linewidth=2.5)
-        # plt.xlabel('$x$', fontsize=18)
-        plt.ylabel(f'Amplitude à $\lambda=${lambda_regul:.1e}', fontsize=18)
-        plt.title('Certificat $\eta_V$ de $m_{a,x}$', fontsize=20)
-        plt.grid()
-        
-        plt.subplot(223)
-        plt.plot(nrj_sfw, 'o--', color='black', linewidth=2.5)
-        plt.xlabel('Itération', fontsize=18)
-        plt.ylabel('$T_\lambda(m)$', fontsize=20)
-        plt.title('Décroissance énergie', fontsize=20)
-        plt.grid()
-        
-        m_sfw.torus(current_fig=fig, subplot=True)
-        
-        plt.figure(figsize=(7,4))
-        plt.stem(x0, np.array(a0), basefmt=" ",
-                 linefmt='k--', markerfmt='ko', label='Ground-truth')
-        plt.stem(np.array(m_sfw.x), np.array(m_sfw.a), basefmt=" ",
-                 linefmt='r--', markerfmt='ro', label='Recovered')
-        plt.plot((0, 1), (0, 0), 'k-', linewidth=1)
-        plt.xlim([0,1])
-        plt.legend()
-        
-        if __saveFig__ == True:
-            plt.savefig('fig/mdpi_sfw_fourier_1D.pdf', format='pdf', dpi=1000,
-            bbox_inches='tight', pad_inches=0.03)
 
