@@ -150,6 +150,14 @@ def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
     return carre * expo / cst_deriv
 
 
+# def indicator_function_list(elements, X_domain, Y_domain, width):
+#     for x_coord in X_domain:
+#         for y_coord in Y_domain:
+#             if (x_coord - width <= element[0] <= x_coord + width and 
+#                 y_coord - width <= element[1] <= y_coord + width):
+#                 return 1
+
+
 class Domain2D:
     def __init__(self, gauche, droit, ech, sigma_psf, dev='cpu'):
         '''Hierher ne marche que pour des grilles carrées'''
@@ -284,7 +292,7 @@ class Mesure2D:
         position, ça vaudrait le coup de virer les duplicats'''
         a_new = torch.cat((self.a, m.a))
         x_new = torch.cat((self.x, m.x))
-        return Mesure2D(a_new, x_new)
+        return Mesure2D(a_new, x_new, dev=device)
 
     def __eq__(self, m):
         if m == 0 and (self.a == [] and self.x == []):
@@ -303,21 +311,22 @@ class Mesure2D:
 
     def to(self, dev):
         """
-        Envoie l'objet Mesure2D sur le composants `device` (le processeur ou 
+        Envoie l'objet Mesure2D sur le composant `device` (le processeur ou 
         la carte graphique Nvidia)
 
         Parameters
         ----------
         dev : str
-            Soit `cpu`, `cuda` (GPU par défaut) ou `cuda:0`, `cuda:1`, etc.
+            Either `cpu`, `cuda` (GPU by default) or `cuda:0`, `cuda:1`, etc.
 
         Returns
         -------
         None.
 
         """
-        self.a = self.a.to(dev)
-        self.x = self.x.to(dev)
+        # self.a = self.a.to(dev)
+        # self.x = self.x.to(dev)
+        return Mesure2D(self.a, self.x, dev=dev)
 
     def kernel(self, dom, noyau='gaussienne', dev=device):
         r"""
@@ -348,26 +357,35 @@ class Mesure2D:
             Matrice discrétisant :math:`\Phi(m)` .
 
         """
-        X_domain = dom.X
-        Y_domain = dom.Y
-        sigma = dom.sigma
         N = self.N
         x = self.x
         a = self.a
+        X_domain = dom.X
+        Y_domain = dom.Y
         if dev == 'cuda':
             acquis = torch.cuda.FloatTensor(X_domain.shape).fill_(0)
         else:
             acquis = torch.zeros(X_domain.shape)
         if noyau == 'gaussienne':
+            sigma = dom.sigma
             for i in range(0, N):
                 acquis += a[i] * gaussienne_2D(X_domain - x[i, 0],
                                                Y_domain - x[i, 1],
                                                sigma)
             return acquis
+        if noyau == 'fourier':
+            f_c = dom.sigma
+            f_c_vec = torch.arange(- f_c, f_c + 1)
+            imag = torch.complex(torch.tensor(0), torch.tensor(1))
+            acquis = a * torch.exp(-2 * imag * np.pi * f_c_vec * x)
+            return acquis
         if noyau == 'laplace':
             raise TypeError("Pas implémenté.")
-        if noyau == 'fourier':
-            raise TypeError("Pas implémenté.")
+        # if noyau == 'indicator':
+        #     pixel_size = dom.x_gauche / N
+        #     for i in range(0, N):
+        #         acquis += a[i] * indicator_function_list(x[i,:], X_domain, 
+        #                                                  Y_domain, pixel_size)
         raise NameError("Unknown kernel.")
 
     def cov_kernel(self, dom):
@@ -452,17 +470,21 @@ class Mesure2D:
             acquis = simul + fond
         raise NameError("Unknown type of noise")
 
-    def graphe(self, X_domain, Y_domain, lvl=50):
+
+    def graphe(self, dom, lvl=50):
         '''Trace le contourf de la mesure'''
         # f = plt.figure()
-        plt.contourf(X_domain, Y_domain, self.kernel(X_domain, Y_domain),
+        X_domain = dom.X
+        Y_domain = dom.Y
+        plt.contourf(X_domain, Y_domain, self.kernel(dom),
                      lvl, label='$y_0$', cmap='hot')
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
-        plt.title('Acquisition y', fontsize=18)
+        plt.title('$\Phi y$', fontsize=18)
         plt.colorbar()
         plt.grid()
         plt.show()
+
 
     def tv(self):
         r"""
@@ -479,7 +501,7 @@ class Mesure2D:
         except ValueError:
             return 0
 
-    def export(self, dom, obj='covar', title=None, legend=False):
+    def export(self, dom, obj='covar', dev=device, title=None, legend=False):
         r"""
         Export the measure plotted through a kernel
 
@@ -491,6 +513,8 @@ class Mesure2D:
         obj : str, optional
             Soit 'covar' pour reconstruire sur la covariance soit 'acquis'
             pour reconstruire sur la moyenne. The default is 'covar'.
+        dev: str
+            Either `cpu`, `cuda` (GPU par défaut) or `cuda:0`, `cuda:1`, etc.
         title : str, optional
             Title of the ouput image file. The default is None.
         legend : boolean, optional
@@ -506,7 +530,10 @@ class Mesure2D:
         None.
 
         """
-        result = self.kernel(dom)
+        result = self.kernel(dom, dev=dev) # Really fast if you have 
+                                            # CUDA enabled
+        if dev != 'cpu':
+            result = result.to('cpu')
         if title is None:
             title = 'fig/reconstruction/experimentals.png'
         elif isinstance(title, str):
@@ -529,7 +556,34 @@ class Mesure2D:
             plt.savefig(title, format='pdf', dpi=1000,
                     bbox_inches='tight', pad_inches=0.03)
         else:
-            plt.imsave(title, result, cmap='hot')
+            plt.imsave(title, result, cmap='hot', vmax=13)
+            print(f"[+] {self} saved")
+
+
+    def show(self, dom, acquis):
+        """
+        HIERHER: write it
+
+        Parameters
+        ----------
+        dom : TYPE
+            DESCRIPTION.
+        acquis : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        plt.figure()
+        cont1 = plt.contourf(dom.X, dom.Y, acquis, 100, cmap='gray')
+        for c in cont1.collections:
+            c.set_edgecolor("face")
+        plt.colorbar()
+        plt.scatter(self.x[:, 0], self.x[:, 1], marker='+', c='orange',
+                    label='Spikes', s=dom.N_ech*self.a)
+        plt.legend()
 
 
     def energie(self, dom, acquis, regul, obj='covar', bruits='gauss'):
@@ -957,7 +1011,7 @@ def unravel_index(indices, shape):
 
 # Le fameux algo de Sliding Frank Wolfe
 def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
-        obj='covar', printInline=True):
+        obj='covar', dev=device, printInline=True):
     r"""Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
     solution du BLASSO [1].
 
@@ -1022,14 +1076,14 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     """
     N_ech_y = dom.N_ech  # hierher à adapter
     N_grille = dom.N_ech**2
-    acquis = acquis.to(device)
+    acquis = acquis.to(dev)
     if obj == 'covar':
         N_grille = N_grille**2
     if mes_init == None:
-        mesure_k = Mesure2D(dev=device)
-        a_k = torch.Tensor().to(device)
-        x_k = torch.Tensor().to(device)
-        x_k_demi = torch.Tensor().to(device)
+        mesure_k = Mesure2D(dev=dev)
+        a_k = torch.Tensor().to(dev)
+        x_k = torch.Tensor().to(dev)
+        x_k_demi = torch.Tensor().to(dev)
         Nk = 0
     else:
         mesure_k = mes_init
@@ -1047,7 +1101,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         certif_abs = torch.abs(eta_V_k)
         x_star_index = unravel_index(certif_abs.argmax(), eta_V_k.shape)
         x_star_tuple = tuple(s / N_ech_y for s in x_star_index)
-        x_star = torch.tensor(x_star_tuple).reshape(1,2).to(device)
+        x_star = torch.tensor(x_star_tuple).reshape(1,2).to(dev)
         if printInline:
             print(fr'* x^* index {x_star_tuple} max ' +
                   fr'à {certif_abs[x_star_index]:.3e}')
@@ -1066,12 +1120,12 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         if not x_k.numel():
             x_k_demi = x_star
             a_param = (torch.ones(Nk+1, dtype=torch.float)
-                       ).to(device).detach().requires_grad_(True)
+                       ).to(dev).detach().requires_grad_(True)
         else:
             x_k_demi = torch.cat((x_k, x_star))
-            uno = torch.tensor([10.0], dtype=torch.float).to(device).detach()
+            uno = torch.tensor([10.0], dtype=torch.float).to(dev).detach()
             a_param = torch.cat((a_k, uno))
-            a_param.requires_grad=True
+            a_param.requires_grad = True
 
         # On résout LASSO (étape 7)
         mse_loss = torch.nn.MSELoss(reduction='sum')
@@ -1135,7 +1189,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         # print('* x_k_plus : ' +  str(np.round(x_k_plus, 2)))
 
         # Mise à jour des paramètres avec retrait des Dirac nuls
-        mesure_k = Mesure2D(a_k_plus, x_k_plus, dev=device)
+        mesure_k = Mesure2D(a_k_plus, x_k_plus, dev=dev)
         mesure_k = mesure_k.prune()
         # mesure_k = merge_spikes(mesure_k)
         a_k = mesure_k.a
@@ -1491,7 +1545,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
             c.set_edgecolor("face")
         plt.colorbar()
         plt.scatter(m.x[:, 0], m.x[:, 1], marker='+', c='orange',
-                    label='Recovered spikes', s=dom.N_ech*m.a/2)
+                    label='Recovered spikes', s=dom.N_ech*m.a/8)
         plt.legend()
 
         plt.xlabel('X', fontsize=18)
@@ -1821,7 +1875,8 @@ if __name__ == 'main':
     N_ECH = 32
     X_GAUCHE = 0
     X_DROIT = 1
-    SIGMA = 1e-1
+    # SIGMA = 1e-1
+    SIGMA = 3 # en fait c'est la freq de coupure HIERHER à corriger
     domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
     domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
     
