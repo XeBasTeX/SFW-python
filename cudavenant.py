@@ -150,6 +150,33 @@ def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
     return carre * expo / cst_deriv
 
 
+def grad_gaussienne(X_domain, Y_domain, sigma_g, normalis=None):
+    """
+    Gradient of the Gaussian function centred in 0.
+
+    Parameters
+    ----------
+    X_domain : Tensor
+        Grille des coordonnées X (issue de meshgrid).
+    Y_domain : Tensor
+        Grille des coordonnées Y (issue de meshgrid).
+    sigma_g : double
+        :math:`\sigma` paramètre de la gaussienne.
+    normalis : boolean, optional
+        Enables or not the normalisation of the gaussian PSF. 
+        The default is None.
+
+    Returns
+    -------
+    Tensor
+        Vecteur discrétisant le gradient de la gaussienne :math:`h` sur 
+        :math:`\mathcal{X}`.
+
+    """
+    gauss = gaussienne_2D(X_domain, Y_domain, sigma_g)
+    return((- (X_domain + Y_domain) / sigma_g**2) * gauss)
+
+
 # def indicator_function_list(elements, X_domain, Y_domain, width):
 #     for x_coord in X_domain:
 #         for y_coord in Y_domain:

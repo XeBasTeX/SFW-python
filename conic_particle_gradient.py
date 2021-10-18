@@ -18,6 +18,7 @@ import time
 
 import numpy as np
 import torch
+from scipy import integrate
 import matplotlib.pyplot as plt
 
 import cudavenant
@@ -43,6 +44,34 @@ m_ax0 = cudavenant.Mesure2D(amp, xpos)
 y = m_ax0.kernel(domain)
 plt.imshow(y)
 
+
+def phiAdjointSimps(acquis, mes_pos, domain, noyau='gaussien'):
+    eta = np.empty(len(mes_pos))
+    if noyau == 'gaussien':
+        for i in range(len(mes_pos)):
+            x = mes_pos[i]
+            eta[i] = integrate.simps(acquis*cudavenant.gaussienne(x-domain), x=domain)
+        return eta
+    if noyau == 'fourier':
+        for i in range(len(mes_pos)):
+            raise TypeError("Fourier is not implemented")
+        return eta
+    else:
+        raise TypeError
+
+
+def gradPhiAdjointSimps(acquis, mes_pos, domain, noyau='gaussien'):
+    eta = np.empty(len(mes_pos))
+    if noyau == 'gaussien':
+        for i in range(len(mes_pos)):
+            x = mes_pos[i]
+            eta[i] = integrate.simps(acquis*cudavenant.grad_gaussienne(x-domain),
+                                     x=domain)
+        return eta
+    if noyau == 'fourier':
+        raise TypeError("Fourier is not implemented")
+    else:
+        raise TypeError
 
 
 def CPGD(acquis, dom, λ=1e-5, nIter=5, mes_init=None, mesParIter=False,
