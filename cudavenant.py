@@ -1477,6 +1477,26 @@ def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
     raise ValueError('Unknown p for W_p computation')
 
 
+def SNR(signal, acquisition):
+    """
+    Compute the Signal to Noise Ratio of the stack.
+
+    Parameters
+    ----------
+    signal : Tensor
+        The ground-truth signal.
+    acquisition : Tensor
+        The observed acquisition.
+
+    Returns
+    -------
+    double
+        SNR of the stack.
+
+    """
+    return 10 * torch.log10(torch.norm(signal) / torch.norm(acquisition - signal))
+
+
 def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
                  saveFig=False, obj='covar'):
     '''Affiche tous les graphes importants pour la mesure m'''
@@ -1965,6 +1985,7 @@ if __name__ == 'main':
                                     nIter=iteration, mesParIter=True,
                                     obj='acquis', printInline=True)
     
+
     
     print(f'm_cov : {m_cov.N} δ-pics')
     print(f'm_moy : {m_moy.N} δ-pics')

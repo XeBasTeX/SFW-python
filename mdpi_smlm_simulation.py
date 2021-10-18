@@ -5,7 +5,7 @@ Created on Thu Jul 29 09:48:29 2021
 @author: basti
 """
 
-__saveFig__ = False
+__saveFig__ = True
 __saveVid__ = False
 __savePickle__ = True
 
@@ -24,53 +24,58 @@ import cudavenant
 
 
 # GPU acceleration if needed
-device = "cuda" if torch.cuda.is_available() else "cpu"
+# device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "cpu"
 print("[+] Using {} device".format(device))
 
 # Tic 
 tic = time.time()
 
-# Charger pile et cumulants 
-stream = io.imread('real_data_smlm/real_data_smlm.tif')
+# Load, normalise and adapt the type of the stack
+stream = io.imread('mdpi_smlm/MT0.N1.HD-2D-Exp.tif')
 # stream = io.imread('mdpi_smlm/MT4.N2.HD-2D-Exp.tif')
 pile = torch.from_numpy(np.array(stream, dtype='float64'))
 pile_max = torch.max(pile)
 pile /= pile_max
 pile = pile.float()
 
+#☻ Estimate the background noise on a small empty square
+background_noise = pile[:,0:2,0:5].mean()
+
 
 
 #%%
 
 
-# Calculer les cumulants
+# Compute the temporal mean
 y_bar_cpu = torch.mean(pile.float(), 0)
 y_bar = (y_bar_cpu).to(device)
 
-
+# relevant global quantities
 N_ECH = y_bar.shape[0]
 X_GAUCHE = 0
 X_DROIT = 1
-FWMH = 351.8 / 100 / N_ECH
+FWMH = 229 / 100 / N_ECH
 SIGMA = FWMH / (2 * np.sqrt(2*np.log(2)))
 
 domain = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
 domain_cpu = cudavenant.Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
 
+# Super-resolution factor
 q = 2**4
 super_domain = domain.super_resolve(q, SIGMA/5)
 
 lambda_moy = 2e-4
-iteration = 160
+iteration = 10
 
 N_stack = pile.size(0)
 m_ax = cudavenant.Mesure2D()
 
-print(f"[+] Intializing the stack: computation on {device}")
+print(f"[+] Intializing the stack: computation of {N_stack} steps on {device}")
 
 for i in range(N_stack):
-    acquisition = pile[i,:] - pile[i,:].min()
+    # background_noise = pile[i,:].min()
+    acquisition = pile[i,:] - background_noise
     (m_moy, nrj_moy) = cudavenant.SFW(acquisition, domain,
                                       regul=lambda_moy,
                                       nIter=iteration, mesParIter=False,
@@ -90,13 +95,25 @@ print(f'm_ax : {m_ax.N} Diracs')
 # m_seuil = cudavenant.Mesure2D(m_ax.a[ind], m_ax.x[ind])
 
 if __savePickle__:
-    with open('pickle/real_data_smlm_x.pkl', 'wb') as output:
+    with open('pickle/simulated_data_smlm_mdpi.pkl', 'wb') as output:
         pickle.dump(m_ax.x, output, pickle.HIGHEST_PROTOCOL)
 
 
 if __saveFig__:
-    m_ax.export(super_domain, title="real_data_smlm_mdpi")
+    m_ax.export(super_domain, title="simulated_data_smlm_mdpi")
 
 tac = time.time() - tic
 print(f"[+] Elapsed time: {tac:.2f} seconds")
 
+
+# Ground-truth measure
+emitters_loc = np.genfromtxt('sofi_filaments/emitters_noiseless_lowBg.csv',
+                             delimiter=',')
+emitters_loc = np.fliplr(emitters_loc) / 64
+m_ax0 = cudavenant.Mesure2D(np.ones(emitters_loc.shape[0]), emitters_loc)
+
+y0 = (m_ax0.kernel(domain)).T / pile_max
+
+# # SNR
+# snr = cudavenant.SNR(y0, y_bar)
+# print(snr)

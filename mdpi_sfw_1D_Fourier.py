@@ -31,7 +31,7 @@ X_big = np.linspace(xgauche-xdroit, xdroit, 2*N_ech)
 X_certif = np.linspace(xgauche, xdroit, N_ech+1)
 
 sigma = 1e-1 # écart-type de la PSF
-lambda_regul = 1e-1 # Param de relaxation
+lambda_regul = 1 # Param de relaxation
 niveaubruits = 1e-2 # sigma du bruit
 
 F_C = 6
@@ -310,7 +310,7 @@ def SFW(acquis, regul=1e-5, nIter=5, noyau='gaussien'):
         
         # Condition d'arrêt (étape 4)
         if np.abs(eta_V_k[x_star_index]) < 1:
-            nrj_vecteur[k] = mesure_k.energie(X, y, regul)
+            nrj_vecteur[k:] = mesure_k.energie(X, acquis, regul, noyau=noyau)
             print(f'* Energie : {nrj_vecteur[k]:.3f}')
             print("\n\n---- Condition d'arrêt ----")
             return(mesure_k, nrj_vecteur[:k])

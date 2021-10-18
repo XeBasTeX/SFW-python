@@ -22,7 +22,8 @@ import scipy
 
 
 np.random.seed(90)
-N_ech = 2048*8 # Taux d'échantillonnage
+# N_ech = 2048*8 # Taux d'échantillonnage
+N_ech = 1000
 xgauche = 0
 xdroit = 1
 X = np.linspace(xgauche, xdroit, N_ech)
@@ -161,9 +162,17 @@ class Mesure:
             for i in range(0,N):
                 acquis += a[i] * double_gaussienne(X - x[i])
             return acquis
+        elif noyau == 'gaussien_der':
+            for i in range(0,N):
+                acquis += a[i] * grad_gaussienne(X - x[i])
+            return acquis
         elif noyau == 'fourier':
             a = np.array(a)
             acquis = fourier_measurements(x, F_C) @ a
+            return acquis
+        elif noyau == 'fourier_der':
+            a = np.array(a)
+            acquis = grad_fourier_measurements(x, F_C) @ a
             return acquis
         else:
             raise TypeError("Unknown kernel")
@@ -238,6 +247,14 @@ def phi(m, domain, noyau='gaussien'):
     return m.kernel(domain, noyau=noyau)
 
 
+def phi_der(m, domain, noyau='gaussien'):
+    if noyau == 'gaussien':
+        return m.kernel(domain, noyau='gaussien_der')
+    if noyau == 'fourier':
+        return m.kernel(domain, noyau='fourier_der')
+    raise TypeError
+
+
 def phi_vecteur(a, x, domain, noyau='gaussien'):
     '''shape est un entier indiquant le taille à viser avec le 
         padding'''
@@ -279,11 +296,11 @@ def gradPhiAdjoint(acquis, domain, noyau='gaussien'):
 
 
 def etak(mesure, acquis, regul, noyau='gaussien'):
-    if noyau == 'gaussien':
+    if noyau == 'gaussien' or noyau == 'gaussien_der':
         eta = 1/regul*phiAdjoint(acquis - phi(mesure, X, noyau=noyau),
                                  X_big, noyau=noyau)
         return eta
-    if noyau == 'fourier':
+    if noyau == 'fourier' or noyau == 'fourier_der':
         eta = 1/regul*phiAdjoint(acquis - phi(mesure, X, noyau=noyau),
                                  X, noyau=noyau)
         return eta
@@ -304,7 +321,7 @@ a0 = [1, 1, -1]
 m_ax0 = Mesure(a0, x0)
 niveaubruits = 0.12
 
-noy = 'fourier'
+noy = 'gaussien'
 y0 = m_ax0.kernel(X, noyau=noy)
 y = m_ax0.acquisition(niveaubruits, noyau=noy)
 certes0 = phiAdjoint(y0, X, noyau=noy)
@@ -324,6 +341,8 @@ elif noy == 'gaussien':
              linefmt='k--', markerfmt='ko')
     plt.legend()
     plt.grid()
+else:
+    raise TypeError("Unknown kernel")
 
 
 
@@ -333,41 +352,38 @@ def find_nearest(array, value):
     return array[idx]
 
 
-def CPGD(acquis, domain, λ=0.3, α=1, β=1, nIter=10, nParticles=4, 
+def CPGD(acquis, domain, λ=0.6, α=5e-3, β=5e-3, nIter=50, nParticles=20, 
          noyau='fourier'):
 
     ss = lambda r : np.abs(r) * r
 
     θ_0 = np.linspace(xgauche, xdroit, nParticles)
-    r_0 = 0.1*np.ones(nParticles)
+    r_0 = 0.5 * np.ones(nParticles)
     𝜈_0 = Mesure(r_0, θ_0)
     grad_r, grad_θ = np.zeros(nParticles), np.zeros(nParticles)
 
     r_k, θ_k, 𝜈_k = r_0, θ_0, 𝜈_0
     𝜈_vecteur = [0] * (nIter)
-    r_vecteur, θ_vecteur = np.zeros((nIter, nParticles)), np.zeros((nIter, nParticles))
+    (r_vecteur, θ_vecteur) = (np.zeros((nIter, nParticles)),
+                              np.zeros((nIter, nParticles)))
 
     # Loop over the gradient descent
     for k in range(nIter):
         r_vecteur[k,:] = r_k
-        𝜈_vecteur[k] = 𝜈_k
         θ_vecteur[k,:] = θ_k
+        𝜈_vecteur[k] = 𝜈_k
         for l in range(nParticles):
-            simul_r = np.sum(
-                ss(r_k) * fourier_measurements(θ_k[l] - θ_k, F_C)) / nParticles
-            obs_r = np.sum(fourier_measurements(
-                θ_k[l] - domain, F_C).T * ss(acquis))
+            t_k = min(range(len(acquis)), key=lambda i: abs(acquis[i]-r_k[l]))
+            simul_r = np.sum(ss(r_k) * fourier_measurements(θ_k[l] - θ_k, F_C))
+            obs_r = np.sum(fourier_measurements(θ_k[l] - domain, F_C).T * ss(acquis)) / nParticles
             grad_r[l] = np.sign(r_k[l]) * np.real(simul_r - obs_r) + λ
 
-            simul_der_r = np.sum(
-                ss(r_k) * grad_fourier_measurements(θ_k[l] - θ_k,
-                                                    F_C)) / nParticles
-            obs_der_r = np.sum(grad_fourier_measurements(
-                θ_k[l] - domain, F_C).T * ss(acquis))
+            simul_der_r = np.sum(ss(r_k) * grad_fourier_measurements(θ_k[l] - θ_k, F_C))
+            obs_der_r = np.sum(grad_fourier_measurements(θ_k[l] - domain, F_C).T * ss(acquis)) / nParticles
             grad_θ[l] = np.sign(r_k[l]) * np.real(simul_der_r - obs_der_r)
 
         # Update gradient flow
-        r_k *= np.exp(2 * α * λ * grad_r)
+        r_k *= np.exp(2 * α * grad_r)
         θ_k += β * λ * grad_θ
 
         # Store iterated measure 𝜈
@@ -375,7 +391,12 @@ def CPGD(acquis, domain, λ=0.3, α=1, β=1, nIter=10, nParticles=4,
     return (𝜈_k, 𝜈_vecteur, r_vecteur, θ_vecteur)
 
 
-𝜈, 𝜈_itere, r_itere, θ_itere = CPGD(y0, X, noyau='fourier')
+𝜈, 𝜈_itere, r_itere, θ_itere = CPGD(y0, X, noyau=noy)
+
+
+print('On a retrouvé m_ax = ' + str(𝜈))
+print('On voulait retrouver m_ax0 = ' + str(m_ax0))
+
 plt.figure()
 plt.stem(𝜈.x, 𝜈.a, label='$\\nu_t$', linefmt='r--',
          markerfmt='ro', use_line_collection=True, basefmt=" ")
@@ -386,7 +407,6 @@ for l in range(len(𝜈.a)):
 plt.legend()
 plt.plot((-1, 2), (0, 0), 'k-', linewidth=1)
 plt.xlim([-0.1,1.1])
-
 
 
 
