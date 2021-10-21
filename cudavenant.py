@@ -24,6 +24,9 @@ import matplotlib.pyplot as plt
 
 import pickle
 
+
+torch.manual_seed(90)
+
 # GPU acceleration if needed
 device = "cuda" if torch.cuda.is_available() else "cpu"
 device = "cpu"
