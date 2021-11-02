@@ -29,7 +29,7 @@ torch.manual_seed(90)
 
 # GPU acceleration if needed
 device = "cuda" if torch.cuda.is_available() else "cpu"
-device = "cpu"
+# device = "cpu"
 print("[Cudavenant] Using {} device".format(device))
 
 
@@ -275,6 +275,23 @@ class Domain2D:
         X_big, Y_big = torch.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
 
+    def to(self, dev):
+        """
+        Envoie l'objet Domain2D sur le composant `device` (le processeur ou 
+        la carte graphique Nvidia)
+
+        Parameters
+        ----------
+        dev : str
+            Either `cpu`, `cuda` (GPU by default) or `cuda:0`, `cuda:1`, etc.
+
+        Returns
+        -------
+        None.
+
+        """
+        return Domain2D(self.x_gauche, self.x_droit, self.N_ech, self.sigma, 
+                        dev=dev)
 
     def super_resolve(self, q=4, sigma=None):
         super_N_ech = q * self.N_ech
@@ -313,9 +330,13 @@ class Mesure2D:
                                                             np.ndarray):
             self.a = torch.from_numpy(amplitude).to(dev)
             self.x = torch.from_numpy(position).to(dev)
+        elif isinstance(amplitude, list) and isinstance(position, list):
+            self.a = torch.tensor(amplitude).to(dev)
+            self.x = torch.tensor(position).to(dev)
         else:
             raise TypeError("Gros chien de la casse formate ta bouse")
         self.N = len(amplitude)
+
 
     def __add__(self, m):
         '''Hieher : il faut encore régler l'addition pour les mesures au même
@@ -324,6 +345,7 @@ class Mesure2D:
         x_new = torch.cat((self.x, m.x))
         return Mesure2D(a_new, x_new, dev=device)
 
+
     def __eq__(self, m):
         if m == 0 and (self.a == [] and self.x == []):
             return True
@@ -331,13 +353,16 @@ class Mesure2D:
             return self.__dict__ == m.__dict__
         return False
 
+
     def __ne__(self, m):
         return not self.__eq__(m)
+
 
     def __str__(self):
         '''Donne les infos importantes sur la mesure'''
         return(f"{self.N} δ-pics \nAmplitudes : {self.a}" +
                f"\nPositions : {self.x}")
+
 
     def to(self, dev):
         """
@@ -357,6 +382,7 @@ class Mesure2D:
         # self.a = self.a.to(dev)
         # self.x = self.x.to(dev)
         return Mesure2D(self.a, self.x, dev=dev)
+
 
     def kernel(self, dom, noyau='gaussienne', dev=device):
         r"""
@@ -417,6 +443,7 @@ class Mesure2D:
         #         acquis += a[i] * indicator_function_list(x[i,:], X_domain, 
         #                                                  Y_domain, pixel_size)
         raise NameError("Unknown kernel.")
+
 
     def cov_kernel(self, dom):
         r"""
@@ -676,6 +703,25 @@ class Mesure2D:
                 return attache + parcimonie
             raise NameError("Unknown kernel")
         raise NameError("Unknown noise")
+
+
+    def save(self, path='saved_objects/measure.pt'):
+        """
+        Save the measure in the given file
+
+        Parameters
+        ----------
+        path : str, optional
+            Path and name of the saved measure object. The default is 
+            'saved_objects/measure.pt'.
+
+        Returns
+        -------
+        None.
+
+        """
+        torch.save(self, path)
+
 
     def prune(self, tol=1e-4):
         r"""
@@ -1327,7 +1373,7 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
 def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5, 
                        nIter=80, obj='covar', printInline=True):
     """
-    Hierher : CUDA support
+    Hierher : implement CUDA support
 
     Parameters
     ----------
@@ -1352,8 +1398,8 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
 
     Returns
     -------
-    m_tot : TYPE
-        DESCRIPTION.
+    m_tot : Mesure2D
+        Measure computed by merging all the measures recovered on subproblems.
 
     """
     m_tot = Mesure2D()
