@@ -22,7 +22,8 @@ from matplotlib.animation import FuncAnimation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
-import pickle
+from tqdm import tqdm
+# import pickle
 
 
 torch.manual_seed(90)
@@ -36,24 +37,25 @@ print("[Cudavenant] Using {} device".format(device))
 
 def sum_normalis(X_domain, Y_domain, sigma_g):
     r"""
-    Renvoie la somme de toutes les composantes de la PSF discrète, pour que
-    l'on puisse normaliser la PSF, de sorte à avoir torch.sum(PSF) = 1
+    Returns the sum of all the components of the discrete PSF, such that
+    the PSF can be normalised i.e. torch.sum(PSF) = 1
 
     Parameters
     ----------
-    X_domain : Tensor
-        Grille des coordonnées X (issue de meshgrid).
-    Y_domain : Tensor
-        Grille des coordonnées Y (issue de meshgrid).
-    sigma_g : double
-        :math:`\sigma` paramètre de la gaussienne.
+    X_domain: Tensor
+        X coordinate grid (from meshgrid).
+    Y_domain: Tensor
+        Grid of Y coordinates (from meshgrid).
+    sigma_g: double
+        :math:`sigma` parameter of the Gaussian.
 
     Returns
     -------
     double
-        Somme de toutes les composantes de la PSF
+        Sum of all components of the PSF
 
     """
+
     expo = torch.exp(-(torch.pow(X_domain, 2) +
                 torch.pow(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
@@ -63,24 +65,24 @@ def sum_normalis(X_domain, Y_domain, sigma_g):
 
 def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
     r"""
-    Gaussienne en 2D centrée en 0 normalisée.
+    2D normalised Gaussian bump centred in 0 .
 
     Parameters
     ----------
-    X_domain : Tensor
-        Grille des coordonnées X (issue de meshgrid).
-    Y_domain : Tensor
-        Grille des coordonnées Y (issue de meshgrid).
-    sigma_g : double
-        :math:`\sigma` paramètre de la gaussienne.
-    undivide : str
-        Pour savoir si on normalise par les composantes de la PSF.
+    X_domain: Tensor
+        X coordinate grid (from meshgrid).
+    Y_domain: Tensor
+        Grid of Y coordinates (from meshgrid).
+    sigma_g: double
+        :math:`sigma` parameter of the Gaussian.
+    undivide : boolean
+        Parameter to normalise by the components of the PSF
         The default is True.
 
     Returns
     -------
     Tensor
-        Vecteur discrétisant la gaussienne :math:`h` sur :math:`\mathcal{X}`.
+        Discretisation of the gaussian :math:`h` on :math:`\mathcal{X}`.
 
     """
     expo = torch.exp(-(torch.pow(X_domain, 2) + torch.pow(Y_domain, 2))
@@ -95,26 +97,26 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
 
 def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
     r"""
-    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la
-    chain rule derivation.
+    2D normalised Gaussian bump centred in 0. Be aware of the chain rule 
+    derivation
 
     Parameters
     ----------
-    X_domain : Tensor
-        Grille des coordonnées X (issue de meshgrid).
-    Y_domain : Tensor
-        Grille des coordonnées Y (issue de meshgrid).
+    X_domain: Tensor
+        X coordinate grid (from meshgrid).
+    Y_domain: Tensor
+        Grid of Y coordinates (from meshgrid).
     X_deriv : Tensor
-        Grille des coordonnées X pour calculer la partie en :math:`x` de la
-        dérivée partielle
-    sigma_g : double
-        :math:`\sigma` paramètre de la gaussienne.
+        Coordinate grid X to compute the :math:`x`-axis of the partial 
+        derivative
+    sigma_g: double
+        :math:`sigma` parameter of the Gaussian.
 
     Returns
     -------
     Tensor
-        Vecteur discrétisant la première dérivée partielle de la gaussienne
-        :math:`\partial_1 h` sur :math:`\mathcal{X}`.
+        Discretisation of the first partial derivative of the Gaussian
+        :math:`\partial_1 h` on :math:`\mathcal{X}`.
 
     """
     expo = gaussienne_2D(X_domain, Y_domain, sigma_g, normalis)
@@ -125,26 +127,26 @@ def grad_x_gaussienne_2D(X_domain, Y_domain, X_deriv, sigma_g, normalis=None):
 
 def grad_y_gaussienne_2D(X_domain, Y_domain, Y_deriv, sigma_g, normalis=None):
     r"""
-    Gaussienne centrée en 0  normalisée. Attention, ne prend pas en compte la
-    chain rule derivation.
+    2D normalised Gaussian bump centred in 0. Be aware of the chain rule 
+    derivation
 
     Parameters
     ----------
-    X_domain : Tensor
-        Grille des coordonnées X (issue de meshgrid).
-    Y_domain : Tensor
-        Grille des coordonnées Y (issue de meshgrid).
+    X_domain: Tensor
+        X coordinate grid (from meshgrid).
+    Y_domain: Tensor
+        Grid of Y coordinates (from meshgrid).
     Y_deriv : Tensor
-        Grille des coordonnées Y pour calculer la partie en :math:`y` de la
-        dérivée partielle
-    sigma_g : double
-        :math:`\sigma` paramètre de la gaussienne.
+        Coordinate grid Y to compute the :math:`x`-axis of the partial 
+        derivative
+    sigma_g: double
+        :math:`sigma` parameter of the Gaussian.
 
     Returns
     -------
     Tensor
-        Vecteur discrétisant la première dérivée partielle de la gaussienne
-        :math:`\partial_2 h` sur :math:`\mathcal{X}`.
+        Discretisation of the first partial derivative of the Gaussian
+        :math:`\partial_2 h` on :math:`\mathcal{X}`.
 
     """
     expo = gaussienne_2D(X_domain, Y_domain, sigma_g, normalis)
@@ -159,12 +161,12 @@ def grad_gaussienne(X_domain, Y_domain, sigma_g, normalis=None):
 
     Parameters
     ----------
-    X_domain : Tensor
-        Grille des coordonnées X (issue de meshgrid).
-    Y_domain : Tensor
-        Grille des coordonnées Y (issue de meshgrid).
-    sigma_g : double
-        :math:`\sigma` paramètre de la gaussienne.
+    X_domain: Tensor
+        X coordinate grid (from meshgrid).
+    Y_domain: Tensor
+        Grid of Y coordinates (from meshgrid).
+    sigma_g: double
+        :math:`sigma` parameter of the Gaussian.
     normalis : boolean, optional
         Enables or not the normalisation of the gaussian PSF. 
         The default is None.
@@ -172,7 +174,7 @@ def grad_gaussienne(X_domain, Y_domain, sigma_g, normalis=None):
     Returns
     -------
     Tensor
-        Vecteur discrétisant le gradient de la gaussienne :math:`h` sur 
+        Discretisation of the gradient of the Gaussian bump :math:`h` on 
         :math:`\mathcal{X}`.
 
     """
@@ -190,7 +192,27 @@ def grad_gaussienne(X_domain, Y_domain, sigma_g, normalis=None):
 
 class Domain2D:
     def __init__(self, gauche, droit, ech, sigma_psf, dev='cpu'):
-        '''Hierher ne marche que pour des grilles carrées'''
+        """
+        Only implemented for square grid
+
+        Parameters
+        ----------
+        gauche : double
+            Left limit of the square :math:`\mathcal{X}`.
+        droit : double
+            Right limit of the square :math:`\mathcal{X}`.
+        ech : int
+            Size number of the grid.
+        sigma_psf : double
+            :math:`sigma` parameter of the Gaussian
+        dev : str, optional
+            Device for computation (cpu, cuda:0, etc.). The default is 'cpu'.
+
+        Returns
+        -------
+        None.
+
+        """
         grille = torch.linspace(gauche, droit, ech)
         X_domain, Y_domain = torch.meshgrid(grille, grille)
         self.x_gauche = gauche
@@ -359,7 +381,6 @@ class Mesure2D:
 
 
     def __str__(self):
-        '''Donne les infos importantes sur la mesure'''
         return(f"{self.N} δ-pics \nAmplitudes : {self.a}" +
                f"\nPositions : {self.x}")
 
@@ -946,6 +967,117 @@ def phiAdjoint(acquis, dom, obj='covar'):
     raise TypeError
 
 
+def phiAdjointSimps(acquis, mes_pos, dom, obj='acquis', noyau='gaussien',
+                    dev=device):
+    """
+    Simpson method to compute the adjoint of :math:`y` when one cannot 
+    rely on some numerical tricks and torch subroutines.
+
+    HIERHER: obj='covar' is not implemented    
+
+    Parameters
+    ----------
+    acquis : Tensor
+        Either the mean acquisition :math:`y` or the covariance :math:`R_y`.
+    mes_pos : Tensor
+        Tensor of positions of the measure.
+    dom : Domain2D
+        Domain :math:`\mathcal{X}` on which one computes the adjoint of the
+        forward operator
+    obj : str, optional
+        Either 'covar' to reconstruct based on covariance either 'acquis' to
+        reconstruct on the mean. The default is 'acquis'.
+    noyau : str, optional
+        Kernel of the forward operator. The default is 'gaussien'.
+    dev : str, optional
+        Device for eta computation: cpu, cuda:0, etc. The default is device.
+
+    Raises
+    ------
+    TypeError
+        The forward kernel is unknown.
+
+    Returns
+    -------
+    eta : Tensor
+        Adjoint :math:`\eta` of an acquisition.
+
+    """
+    eta = torch.zeros(len(mes_pos))
+    eta = eta.to(dev)
+    if noyau == 'gaussien':
+        for i in range(len(mes_pos)):
+            x = mes_pos[i]
+            gauss = gaussienne_2D(x[0] - dom.X, x[1] - dom.Y, dom.sigma)
+            integ_x = torch.trapz(acquis * gauss, dom.X_grid)
+            eta[i] = torch.trapz(integ_x, dom.X_grid)
+        return eta
+    if noyau == 'fourier':
+        for i in range(len(mes_pos)):
+            raise TypeError("Fourier is not implemented")
+        return eta
+    else:
+        raise TypeError("Unknown kernel")
+
+
+def gradPhiAdjointSimps(acquis, mes_pos, dom, obj='acquis', noyau='gaussien',
+                        dev=device):
+    """
+    Simpson method to compute the gradient of the adjoint when one cannot 
+    rely on some numerical tricks and torch subroutines.
+
+    HIERHER: obj='covar' is not implemented    
+
+    Parameters
+    ----------
+    acquis : Tensor
+        Either the mean acquisition :math:`y` or the covariance :math:`R_y`.
+    mes_pos : Tensor
+        Tensor of positions of the measure.
+    dom : Domain2D
+        Domain :math:`\mathcal{X}` on which one computes the adjoint of the
+        forward operator
+    obj : str, optional
+        Either 'covar' to reconstruct based on covariance either 'acquis' to
+        reconstruct on the mean. The default is 'acquis'.
+    noyau : str, optional
+        Kernel of the forward operator. The default is 'gaussien'.
+    dev : str, optional
+        Device for eta computation: cpu, cuda:0, etc. The default is device.
+
+    Raises
+    ------
+    TypeError
+        The forward kernel is unknown.
+
+    Returns
+    -------
+    eta : Tensor
+        Adjoint :math:`\eta` of an acquisition.
+
+    """
+    eta = torch.zeros(len(mes_pos), 2)
+    eta = eta.to(dev)
+    if noyau == 'gaussien':
+        for i in range(len(mes_pos)):
+            x = mes_pos[i]
+            gauss_x = grad_x_gaussienne_2D(x[0] - dom.X, 
+                                           x[1] - dom.Y, 
+                                           x[0] - dom.X, dom.sigma)
+            integ_x = torch.trapz(acquis * gauss_x, dom.X_grid)
+            eta[i, 0] = torch.trapz(integ_x, dom.X_grid)
+            gauss_y = grad_y_gaussienne_2D(x[0] - dom.X, 
+                                           x[1] - dom.Y, 
+                                           x[1] - dom.Y, dom.sigma)
+            integ_y = torch.trapz(acquis * gauss_y, dom.X_grid)
+            eta[i, 1] = torch.trapz(integ_y, dom.X_grid)
+        return eta
+    if noyau == 'fourier':
+        raise TypeError("Fourier is not implemented")
+    else:
+        raise TypeError
+
+
 def etak(mesure, acquis, dom, regul, obj='covar'):
     r"""Certificat dual :math:`\eta_\lambda` associé à la mesure
     :math:`m_\lambda`. Ce certificat permet de donner une approximation
@@ -955,7 +1087,7 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     Parameters
     ----------
     mesure : Mesure2D
-        Mesure discrète :math:`m` dont on veut obtenir le certificat duaL.
+        Mesure discrète :math:`m` dont on veut obtenir le certificat dual.
     acquis : Tensor
         Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
     dom : Domain2D
@@ -988,6 +1120,83 @@ def etak(mesure, acquis, dom, regul, obj='covar'):
     """
     eta = 1/regul*phiAdjoint(acquis - phi(mesure, dom, obj), dom, obj)
     return eta
+
+
+def etaλk(mesure, acquis, dom, regul, obj='acquis', noyau='gaussien'):
+    """
+    Compute the Simpson approximation of the certificate when one cannot 
+    rely on some numerical tricks and torch subroutines.
+
+
+    Parameters
+    ----------
+    mesure : Mesure2D
+        Discrete measure :math:`m`.
+    acquis : Tensor
+        Either the mean acquisition :math:`y` or the covariance :math:`R_y`.
+    dom : Domain2D
+        Domain :math:`\mathcal{X}` on which one computes the adjoint of the
+        forward operator.
+    regul : double
+        Regularisation parameter `\lambda`.
+    obj : str, optional
+        Either 'covar' to reconstruct based on covariance either 'acquis' to
+        reconstruct on the mean. The default is 'acquis'.
+    noyau : str, optional
+        Kernel of the forward operator. The default is 'gaussien'.
+
+    Returns
+    -------
+    eta : Tensor
+        Continuous function, element of :math:`\mathscr{C}(\mathcal{X})`,
+        discretised. Dual certificate :math:`\eta` associated to `mesure`.
+
+    """
+    simul = phi(mesure, dom, obj)
+    eta = 1/regul*phiAdjointSimps(acquis - simul, mesure.x, dom, obj)
+    # eta = eta - torch.floor(eta) # periodic boundaries
+    return eta
+
+
+def grad_etaλk(mesure, acquis, dom, regul, obj='acquis', noyau='gaussien'):
+    """
+    Compute the Simpson approximation of the gradient of the certificate
+    when one cannot rely on some numerical tricks and torch subroutines.  
+
+    Parameters
+    ----------
+    mesure : Mesure2D
+        Discrete measure :math:`m`.
+    acquis : Tensor
+        Either the mean acquisition :math:`y` or the covariance :math:`R_y`.
+    dom : Domain2D
+        Domain :math:`\mathcal{X}` on which one computes the adjoint of the
+        forward operator.
+    regul : double
+        Regularisation parameter `\lambda`.
+    obj : str, optional
+        Either 'covar' to reconstruct based on covariance either 'acquis' to
+        reconstruct on the mean. The default is 'acquis'.
+    noyau : str, optional
+        Kernel of the forward operator. The default is 'gaussien'.
+
+    Returns
+    -------
+    eta : Tensor
+        Continuous function, element of :math:`\mathscr{C}(\mathcal{X})`,
+        discretised. Dual certificate :math:`\eta` associated to `mesure`.
+
+    """
+    if noyau == 'gaussien':
+        eta = 1/regul*gradPhiAdjointSimps(acquis - phi(mesure, dom, obj),
+                                          mesure.x, dom, obj)
+        # eta = eta - torch.floor(eta) # periodic boundaries
+        return eta
+    if noyau == 'fourier':
+        raise TypeError("Fourier is not implemented")
+    else:
+        raise TypeError("Unkwnon kernel provided")
+
 
 
 def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
@@ -1280,8 +1489,9 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
             print(f'* Énergie : {nrj_vecteur[k]:.3e}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
-            with open('pickle/mes_' + obj + '.pkl', 'wb') as output:
-                pickle.dump(mes_vecteur, output, pickle.HIGHEST_PROTOCOL)
+            torch.save(mes_vecteur, 'pickle/mes_' + obj + '.pkl')
+            # with open('pickle/mes_' + obj + '.pkl', 'wb') as output:
+            #     pickle.dump(mes_vecteur, output, pickle.HIGHEST_PROTOCOL)
         try:
             if (N_vecteur[-1] == N_vecteur[-2]
                 and N_vecteur[-1] == N_vecteur[-3]
@@ -1373,7 +1583,7 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
 def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5, 
                        nIter=80, obj='covar', printInline=True):
     """
-    Hierher : implement CUDA support
+    Hierher: implement CUDA support
 
     Parameters
     ----------
@@ -1451,6 +1661,105 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
     return m_tot
 
 
+def CPGD(acquis, dom, λ=1, α=1e-2, β=1e-2, nIter=20, nParticles=5,
+         noyau='gaussien', obj='acquis', dev=device):
+    """
+    This is an implementation of Conic Particle Gradient Descent
+    
+    Only the mirror retractation is currently implemented
+    
+    The initialisation is currently restricted to the acquisition grid 
+    (you can't initialize with any mesh you choose, even if an adaptative
+     grid makes more sense)
+
+    Parameters
+    ----------
+    acquis : Tensor
+        Acquisition input for the specified kernel and obj.
+    dom : Domain2D
+        Acquisition domain :math:`\mathcal{X}`.
+    λ : Float, optional
+        Regularisaiton parameter. The default is 1.
+    α : Float, optional
+        Trade-off parameter for the Wasserstein metric. The default is 1e-2.
+    β : Float, optional
+        Trade-off parameter for the Fisher-Rao metric. The default is 1e-2.
+    nIter : int, optional
+        Number of iterations. The default is 20.
+    nParticles : int, optional
+        Number of particles that makes up the measure ν_0. The default is 5.
+    noyau : str, optional
+        Class of the kernel applied to the measure. Only the class is 
+        currently supported, the Laplace kernel or the Airy function will 
+        probably be implemented in a in a future version. The default is 
+        'Gaussian'.
+    obj : str, optional
+        Either 'covar'to reconstruct on covariance either 'acquis'
+            to reconstruct. The default is 'acquis'.
+
+    Returns
+    -------
+    ν_k : Mesure2D
+        Reconstructed measure.
+    ν_vecteur : List
+        List of measures along the loop iterates.
+    r_vecteur : List
+        List of Dirac amplitudes' along the loop iterates.
+    θ_vecteur : List
+        List of Dirac positions' along the loop iterates.
+
+    References
+    ----------
+    [1] Lénaïc Chizat. Sparse Optimization on Measures with Over-parameterized 
+    Gradient Descent. 2020.
+    https://hal.archives-ouvertes.fr/hal-02190822/
+    """
+
+    grid_unif = torch.linspace(dom.x_gauche + 0.12, dom.x_droit - 0.12,
+                               nParticles).to(dev)
+    mesh_unif = torch.meshgrid(grid_unif, grid_unif)
+    θ_0 = torch.stack((mesh_unif[0].flatten(), mesh_unif[1].flatten()),
+                      dim=1).to(dev)
+    r_0 = 1 * torch.ones(nParticles**2).to(dev)
+    ν_0 = Mesure2D(r_0, θ_0, dev=dev)
+    ν_0 = ν_0.to(dev)
+
+    r_k, θ_k, ν_k = r_0, θ_0, ν_0
+    ν_vecteur = [0] * (nIter)
+    r_vecteur, θ_vecteur = torch.zeros(
+        (nIter, nParticles**2)), torch.zeros((nIter, nParticles**2, 2))
+    r_vecteur = r_vecteur.to(dev)
+    θ_vecteur = θ_vecteur.to(dev)
+
+    loss = torch.zeros(nIter)
+    loss[0] = ν_0.energie(dom, acquis, λ, obj=obj)
+
+    # Loop over the gradient descent
+    for k in tqdm(range(nIter),
+                  desc=f'[+] Computing CPGD on {dev}'):
+        # Store iterated measure ν
+        ν_vecteur[k] = ν_k.to('cpu')
+        r_vecteur[k, :] = r_k
+        θ_vecteur[k, :] = θ_k
+
+        grad_r = etaλk(ν_k, acquis, dom, λ, obj) - 1
+        grad_θ = grad_etaλk(ν_k, acquis, dom, λ, obj)
+
+        # Update gradient flow
+        r_k *= torch.exp(2 * α * λ * grad_r)
+        θ_k += β * λ * grad_θ
+        ν_k = Mesure2D(r_k, θ_k)
+
+        # NRJ
+        loss[k] = ν_k.energie(dom, acquis, λ, obj=obj)
+
+    ν_k = ν_k.to('cpu')
+    r_vecteur = r_vecteur.to('cpu')
+    θ_vecteur = θ_vecteur.to('cpu')
+    loss = loss.to('cpu')
+    return (ν_k, ν_vecteur, r_vecteur, θ_vecteur, loss)
+
+
 def wasserstein_metric(mes, m_zer, p_wasser=1):
     """
     Retourne la :math:`p`-distance de Wasserstein partiel (Partial Gromov-
@@ -1524,6 +1833,7 @@ def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
         M = ot.dist(mes.x, m_zer.x)
         return M
     raise ValueError('Unknown p for W_p computation')
+
 
 
 def SNR(signal, acquisition):
@@ -1965,6 +2275,70 @@ def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
                     bbox_inches='tight', pad_inches=0.03)
 
 
+def cpgd_anim(acquis, mes_zer, m_itere, theta_itere, dom, video='gif',
+              dev=device):
+    X = dom.X
+    Y = dom.Y
+    N_ech = dom.N_ech
+    fig = plt.figure(figsize=(10, 10))
+
+    ax = fig.add_subplot(111)
+    ax.set_aspect('equal', adjustable='box')
+    cont = ax.contourf(X, Y, acquis, 100, cmap='seismic')
+    for c in cont.collections:
+        c.set_edgecolor("face")
+    # divider = make_axes_locatable(ax)  # pour paramétrer colorbar
+    # cax = divider.append_axes("right", size="5%", pad=0.15)
+    # fig.colorbar(cont, cax=cax)
+    ax.set_xlabel('X', fontsize=25)
+    ax.set_ylabel('Y', fontsize=25)
+    ax.set_title('Acquisition $y$', fontsize=35)
+
+    plt.tight_layout()
+
+    def animate(k):
+        if k >= len(m_itere):
+            # On fige l'animation pour faire une pause à la fin
+            return
+        else:
+            # if k % 2 == 0:
+            #     pass
+            print(k)
+            ax.clear()
+            ax.set_aspect('equal', adjustable='box')
+
+            cont = ax.contourf(X, Y, acquis, 100, cmap='seismic')
+            for c in cont.collections:
+                c.set_edgecolor("face")
+            # divider = make_axes_locatable(ax)  # pour paramétrer colorbar
+            # cax = divider.append_axes("right", size="5%", pad=0.25)
+            # fig.colorbar(cont, ax=cax)
+            for l in range(len(m_itere[k].a)):
+                ax.plot(theta_itere[:k, l, 0], theta_itere[:k, l, 1], 'orange',
+                        linewidth=1.4)
+            ax.scatter(mes_zer.x[:, 0], mes_zer.x[:, 1], marker='x',
+                       s=N_ech, label='GT spikes')
+            ax.scatter(m_itere[k].x[:, 0], m_itere[k].x[:, 1], marker='+',
+                       s=2*N_ech, c='orange', label='Recovered spikes')
+            ax.set_xlabel('X', fontsize=25)
+            ax.set_ylabel('Y', fontsize=25)
+            ax.set_title(f'Reconstruction at iterate = {k}', fontsize=35)
+            ax.legend(loc=1, fontsize=20)
+            plt.xlim([0, 1])
+            plt.ylim([0, 1])
+            # plt.tight_layout()
+
+    anim = FuncAnimation(fig, animate, interval=20, frames=len(m_itere)+3,
+                         blit=False)
+
+    plt.draw()
+    if video == "mp4":
+        anim.save('fig/anim/anim-cpgd-2d.mp4')
+    elif video == "gif":
+        anim.save('fig/anim/anim-cpgd-2d.gif')
+    else:
+        raise ValueError('Unknown video format')
+    return fig
 
 
 if __name__ == 'main':
