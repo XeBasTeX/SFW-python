@@ -28,7 +28,7 @@ __savePickle__ = False
 
 # GPU acceleration if needed
 device = "cuda" if torch.cuda.is_available() else "cpu"
-# device = "cpu"
+device = "cpu"
 # print("[+] Using {} device".format(device))
 
 
@@ -55,7 +55,7 @@ plt.imshow(y_cpu)
 
 # CPGD computation
 𝜈, 𝜈_itere, r_itere, θ_itere, nrj = cudavenant.CPGD(y, domain, λ=1e0, α=4e-2, 
-                                                    β=1e1, nIter=100, 
+                                                    β=1e1, nIter=250, 
                                                     nParticles=8, 
                                                     noyau='gaussien', 
                                                     obj='acquis')
@@ -96,7 +96,7 @@ plt.colorbar()
 plt.legend(loc=1)
 
 
-# cudavenant.cpgd_anim(y_cpu, m_ax0, 𝜈_itere, θ_itere, domain_cpu, 'mp4')
+cudavenant.cpgd_anim(y_cpu, m_ax0, 𝜈_itere, θ_itere, domain_cpu, 'mp4')
 
 
 #%% Curve measure

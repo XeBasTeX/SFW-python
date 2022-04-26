@@ -635,7 +635,7 @@ class Mesure2D:
                     bbox_inches='tight', pad_inches=0.03)
         else:
             plt.imsave(title, result, cmap='hot', vmax=13)
-            print(f"[+] {self} saved")
+            print(f"[+] Measure saved")
 
 
     def show(self, dom, acquis):
@@ -1489,7 +1489,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
             print(f'* Énergie : {nrj_vecteur[k]:.3e}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
-            torch.save(mes_vecteur, 'pickle/mes_' + obj + '.pkl')
+            torch.save(mes_vecteur, 'saved_objects/mes_' + obj + '.pkl')
             # with open('pickle/mes_' + obj + '.pkl', 'wb') as output:
             #     pickle.dump(mes_vecteur, output, pickle.HIGHEST_PROTOCOL)
         try:
@@ -2317,9 +2317,9 @@ def cpgd_anim(acquis, mes_zer, m_itere, theta_itere, dom, video='gif',
                 ax.plot(theta_itere[:k, l, 0], theta_itere[:k, l, 1], 'orange',
                         linewidth=1.4)
             ax.scatter(mes_zer.x[:, 0], mes_zer.x[:, 1], marker='x',
-                       s=N_ech, label='GT spikes')
-            ax.scatter(m_itere[k].x[:, 0], m_itere[k].x[:, 1], marker='+',
-                       s=2*N_ech, c='orange', label='Recovered spikes')
+                       s=N_ech, c='green', label='GT spikes')
+            # ax.scatter(m_itere[k].x[:, 0], m_itere[k].x[:, 1], marker='+',
+            #            s=2*N_ech, c='orange', label='Recovered spikes')
             ax.set_xlabel('X', fontsize=25)
             ax.set_ylabel('Y', fontsize=25)
             ax.set_title(f'Reconstruction at iterate = {k}', fontsize=35)
@@ -2333,7 +2333,7 @@ def cpgd_anim(acquis, mes_zer, m_itere, theta_itere, dom, video='gif',
 
     plt.draw()
     if video == "mp4":
-        anim.save('fig/anim/anim-cpgd-2d.mp4')
+        anim.save('fig/anim/anim-cpgd-2d.mp4', dpi=100,)
     elif video == "gif":
         anim.save('fig/anim/anim-cpgd-2d.gif')
     else:

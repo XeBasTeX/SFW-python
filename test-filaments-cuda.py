@@ -37,14 +37,14 @@ print("[Test] Using {} device".format(device))
 tic = time.time()
 
 # Charger pile et cumulants
-stream = io.imread('sofi_filaments/tubulin_noiseless_highBg.tif')
+stream = io.imread('datasets/sofi_filaments/tubulin_noiseless_highBg.tif')
 pile = torch.from_numpy(np.array(stream, dtype='float64')) #[:,20:52,20:52]
 pile_max = torch.max(pile)
 # pile /= torch.sqrt(pile_max)
 pile /= pile_max
 pile += torch.normal(0, 5e-2, size=pile.shape)
 
-emitters_loc = np.genfromtxt('sofi_filaments/emitters_noiseless_lowBg.csv',
+emitters_loc = np.genfromtxt('datasets/sofi_filaments/emitters_noiseless_lowBg.csv',
                              delimiter=',')
 emitters_loc = torch.fliplr(torch.from_numpy(emitters_loc))[0:-1:3] / 64
 m_ax0 = cudavenant.Mesure2D(torch.ones(emitters_loc.shape[0]),
