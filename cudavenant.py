@@ -34,7 +34,6 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print("[Cudavenant] Using {} device".format(device))
 
 
-
 def sum_normalis(X_domain, Y_domain, sigma_g):
     r"""
     Returns the sum of all the components of the discrete PSF, such that
@@ -57,7 +56,7 @@ def sum_normalis(X_domain, Y_domain, sigma_g):
     """
 
     expo = torch.exp(-(torch.pow(X_domain, 2) +
-                torch.pow(Y_domain, 2))/(2*sigma_g**2))
+                       torch.pow(Y_domain, 2))/(2*sigma_g**2))
     normalis = sigma_g * (2*np.pi)
     normalis = 1 / normalis
     return torch.sum(normalis * expo)
@@ -86,7 +85,7 @@ def gaussienne_2D(X_domain, Y_domain, sigma_g, undivide=__normalis_PSF__):
 
     """
     expo = torch.exp(-(torch.pow(X_domain, 2) + torch.pow(Y_domain, 2))
-                  / (2*sigma_g**2))
+                     / (2*sigma_g**2))
     normalis = (sigma_g * (2*np.pi))
     normalis = 1 / normalis
     if undivide == True:
@@ -185,7 +184,7 @@ def grad_gaussienne(X_domain, Y_domain, sigma_g, normalis=None):
 # def indicator_function_list(elements, X_domain, Y_domain, width):
 #     for x_coord in X_domain:
 #         for y_coord in Y_domain:
-#             if (x_coord - width <= element[0] <= x_coord + width and 
+#             if (x_coord - width <= element[0] <= x_coord + width and
 #                 y_coord - width <= element[1] <= y_coord + width):
 #                 return 1
 
@@ -232,45 +231,42 @@ class Domain2D:
 
     def compute_square_mesh(self):
         r"""
-        Renvoie les grilles discrétisant le domaine :math:`\mathcal{X}` à N_ech
+        Returns the meshgrid discretizing the domain :math:`\mathcal{X}` to 
+        N_ech
 
         Returns
         -------
         Tensor
-            Les grilles coordonnées de x et des y.
+            The coordinate grids in `x` and `y` directions.
 
         """
         return torch.meshgrid(self.X_grid)
 
     def big(self):
-        """
-        Renvoie les grilles adaptées pour le calcul de la convolution discrètes
-        (par exemple dans phiAdjoint) entre deux matrices
+        r"""
+        Returns the meshgrid discretizing the domain :math:`\mathcal{X}` to 
+        N_ech
 
         Returns
         -------
-        X_big : Tensor
-                Matrice coordonnées des x
-        Y_big : Tensor
-                Matrice coordonnées des y
+        Tensor
+            The coordinate grids in `x` and `y` directions.
 
         """
         grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
-                               2*self.N_ech - 1).to(device)
+                                  2*self.N_ech - 1).to(device)
         X_big, Y_big = torch.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
 
     def biggy(self):
-        """
-        Renvoie les grilles adaptées pour le calcul de la convolution discrètes
-        (par exemple dans phiAdjoint) entre deux matrices
+        r"""
+        Returns the meshgrid discretizing the domain :math:`\mathcal{X}` to 
+        N_ech
 
         Returns
         -------
-        X_big : Tensor
-                Matrice coordonnées des x
-        Y_big : Tensor
-                Matrice coordonnées des y
+        Tensor
+            The coordinate grids in `x` and `y` directions.
 
         """
         grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
@@ -278,18 +274,15 @@ class Domain2D:
         X_big, Y_big = torch.meshgrid(grid_big, grid_big)
         return(X_big, Y_big)
 
-
     def reverse(self):
-        """
-        Renvoie les grilles adaptées pour le calcul de la convolution discrètes
-        (par exemple dans phiAdjoint) entre deux matrices
+        r"""
+        Returns the meshgrid discretizing the domain :math:`\mathcal{X}` to 
+        N_ech
 
         Returns
         -------
-        X_big : Tensor
-                Matrice coordonnées des x
-        Y_big : Tensor
-                Matrice coordonnées des y
+        Tensor
+            The coordinate grids in `x` and `y` directions.
 
         """
         grid_big = torch.linspace(self.x_gauche-self.x_droit, self.x_droit,
@@ -299,23 +292,47 @@ class Domain2D:
 
     def to(self, dev):
         """
-        Envoie l'objet Domain2D sur le composant `device` (le processeur ou 
-        la carte graphique Nvidia)
+        Sends the Domain2D object to the `device` component (the CPU or 
+        the Nvidia GPU)
 
         Parameters
         ----------
         dev : str
-            Either `cpu`, `cuda` (GPU by default) or `cuda:0`, `cuda:1`, etc.
+            Either `cpu`, `cuda` (default GPU) or `cuda:0`, `cuda:1`, etc.
 
         Returns
         -------
         None.
 
         """
-        return Domain2D(self.x_gauche, self.x_droit, self.N_ech, self.sigma, 
+        return Domain2D(self.x_gauche, self.x_droit, self.N_ech, self.sigma,
                         dev=dev)
 
     def super_resolve(self, q=4, sigma=None):
+        """
+        Generate the super-resolved domain by a super-resolution factor
+        :math:`q`.
+
+        Parameters
+        ----------
+        q : int, optional
+            Super-resolution factor i.e. the coefficient from coarse to fine 
+            grid. The default is 4.
+        sigma : double, optional
+            Custom sigma bound to the domain. It is used for the plot of
+            Radon measure: indeed, it can not be plotted until it is processed
+            into the forward operator. The common scheme consists in plotting
+            the measure through a Gaussian kernel with really small sigma.
+            The default is None: if choosen it will grab the sigma of the
+            current object domain `self`.
+
+        Returns
+        -------
+        Domain2D
+            Super-resolved domain i.e. domain with :math:`q^d` times more 
+            points.
+
+        """
         super_N_ech = q * self.N_ech
         if sigma == None:
             super_sigma = self.sigma
@@ -343,13 +360,14 @@ class Mesure2D:
         if amplitude is None or position is None:
             amplitude = torch.Tensor().to(dev)
             position = torch.Tensor().to(dev)
-        assert(len(amplitude) == len(position) or len(amplitude) == len(position))
+        assert(len(amplitude) == len(position)
+               or len(amplitude) == len(position))
         if isinstance(amplitude, torch.Tensor) and isinstance(position,
                                                               torch.Tensor):
             self.a = amplitude.to(dev)
             self.x = position.to(dev)
         elif isinstance(amplitude, np.ndarray) and isinstance(position,
-                                                            np.ndarray):
+                                                              np.ndarray):
             self.a = torch.from_numpy(amplitude).to(dev)
             self.x = torch.from_numpy(position).to(dev)
         elif isinstance(amplitude, list) and isinstance(position, list):
@@ -387,53 +405,52 @@ class Mesure2D:
 
     def to(self, dev):
         """
-        Envoie l'objet Mesure2D sur le composant `device` (le processeur ou 
-        la carte graphique Nvidia)
+        Sends the Measure2D object to the `device` component (the processor or 
+        the Nvidia graphics card)
 
         Parameters
         ----------
         dev : str
-            Either `cpu`, `cuda` (GPU by default) or `cuda:0`, `cuda:1`, etc.
+            Either `cpu`, `cuda` (default GPU) or `cuda:0`, `cuda:1`, etc.
 
         Returns
         -------
         None.
 
         """
-        # self.a = self.a.to(dev)
-        # self.x = self.x.to(dev)
         return Mesure2D(self.a, self.x, dev=dev)
 
 
     def kernel(self, dom, noyau='gaussienne', dev=device):
         r"""
-        Applique un noyau à la mesure discrète :math:`m`.
-        Pris en charge : convolution  à noyau gaussien.
+        Applies a kernel to the discrete measure :math:`m`.
+        Supported: convolution with Gaussian kernel.
 
         Parameters
         ----------
-        dom : :py:class:`covenant.Domain2D`
-            Domaine sur lequel va être calculé l'acquisition de :math:`m` dans
-            :math:`\\mathrm{L}^2(\\mathcal{X})`.
-        noyau : str, optional
-            Classe du noyau appliqué sur la mesure. Seule la classe
-            'gaussienne' est pour l'instant prise en charge, le noyau de
-            Laplace ou la fonction d'Airy seront probablement implémentées
-            dans une prochaine version. The default is 'gaussienne'.
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
+        kernel: str, optional
+            Class of the kernel applied to the measurement. Only the classes
+            'gaussienne' and 'fourier' are currently supported, the Laplace 
+            kernel or the Laplace kernel or the Airy function will probably be 
+            implemented in a future version. The default is 'gaussienne'.
 
         Raises
         ------
         TypeError
-            Le noyau n'est pas encore implémenté.
+            The kernel is not yet implemented.
         NameError
-            Le noyau n'est pas reconnu par la fonction.
+            The kernel is not recognised by the function.
 
         Returns
         -------
-        acquis : Tensor
-            Matrice discrétisant :math:`\Phi(m)` .
+        acquired: Tensor
+            Matrix discretizing :math:`\Phi(m)` .
 
         """
+
         N = self.N
         x = self.x
         a = self.a
@@ -458,29 +475,24 @@ class Mesure2D:
             return acquis
         if noyau == 'laplace':
             raise TypeError("Pas implémenté.")
-        # if noyau == 'indicator':
-        #     pixel_size = dom.x_gauche / N
-        #     for i in range(0, N):
-        #         acquis += a[i] * indicator_function_list(x[i,:], X_domain, 
-        #                                                  Y_domain, pixel_size)
         raise NameError("Unknown kernel.")
 
 
     def cov_kernel(self, dom):
         r"""
-        Noyau de covariance associée à la mesure :math:`m` sur le domaine `dom`
+        Covariance kernel associated with the measure :math:`m` on the domain 
+        `dom`.
 
         Parameters
         ----------
-        dom : Domain2D
-            Domaine :math:`\mathcal{X}` sur lequel va être calculé
-            l'acquisition de :math:`m` dans
-            :math:`\\mathrm{L}^2(\\mathcal{X}^2)`.
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
 
         Returns
         -------
-        acquis : Tensor
-            Matrice discrétisant :math:`\Lambda(m)` .
+        acquired: Tensor
+            Matrix discretizing :math:`\Lambda(m)` .
 
         """
         X_domain = dom.X
@@ -505,28 +517,28 @@ class Mesure2D:
 
     def acquisition(self, dom, echantillo, bru):
         r"""
-        Simule une acquisition pour la mesure.
+        Simulates an acquisition for the measurement.
 
         Parameters
         ----------
-        dom : Domain2D
-            Domaine sur lequel va être calculé l'acquisition de :math:`m` dans
-            :math:`\mathrm{L}^2(\mathcal{X})`.
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
         echantillo : double
-            Format de la matrice carrée des bruits. Hierher àimplémenter sur
-            des domaines en rectangle.
-        bru : Bruits
-            L'objet contient toutes les valeurs définissant le bruit à simuler.
+            Format of the square matrix of noises. Hierher to be expanded on
+            domains in rectangle.
+        bru: Noises
+            The object contains all the values defining the noise to be simulated.
 
         Raises
         ------
         NameError
-            Le type de bruit spécifié n'est pas reconnu par la fonction.
+            The specified noise type is not recognised by the function.
 
         Returns
         -------
-        acquis : Tensor
-            Vecteur discrétisant l'acquisition :math:`\Phi(m)`.
+        acquired : Tensor
+            Vector discretizing acquisition :math:`\Phi(m)`.
 
         """
         fond = bru.fond
@@ -549,12 +561,27 @@ class Mesure2D:
         raise NameError("Unknown type of noise")
 
 
-    def graphe(self, dom, lvl=50):
-        '''Trace le contourf de la mesure'''
+    def graphe(self, dom, lvl=50, noyau='gaussienne'):
+        """
+        Plot the functiun through the Gaussian kernel.
+
+        Parameters
+        ----------
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
+        lvl : int, optional
+            Number of level lines. The default is 50.
+
+        Returns
+        -------
+        None.
+
+        """
         # f = plt.figure()
         X_domain = dom.X
         Y_domain = dom.Y
-        plt.contourf(X_domain, Y_domain, self.kernel(dom),
+        plt.contourf(X_domain, Y_domain, self.kernel(dom, noyau=noyau),
                      lvl, label='$y_0$', cmap='hot')
         plt.xlabel('X', fontsize=18)
         plt.ylabel('Y', fontsize=18)
@@ -566,12 +593,12 @@ class Mesure2D:
 
     def tv(self):
         r"""
-        Renvoie 0 si la mesure est vide : hierher à vérifier.
+        TV norm of the measure.
 
         Returns
         -------
         double
-            :math:`|m|(\mathcal{X})`, norme TV de la mesure.
+            :math:`|m|(\mathcal{X})`, the TV-norm of :math:`m`.
 
         """
         try:
@@ -579,18 +606,19 @@ class Mesure2D:
         except ValueError:
             return 0
 
+
     def export(self, dom, obj='covar', dev=device, title=None, legend=False):
         r"""
         Export the measure plotted through a kernel
 
         Parameters
         ----------
-        dom : Domain2D
-            Domaine sur lequel va être calculée l'acquisition de :math:`m` dans
-            :math:`\mathrm{L}^2(\mathcal{X})`.
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
         obj : str, optional
-            Soit 'covar' pour reconstruire sur la covariance soit 'acquis'
-            pour reconstruire sur la moyenne. The default is 'covar'.
+            Either 'covar' to reconstruct wrt covariance either 'acquis'
+            to recostruct wrt to the temporal mean. The default is 'covar'.
         dev: str
             Either `cpu`, `cuda` (GPU par défaut) or `cuda:0`, `cuda:1`, etc.
         title : str, optional
@@ -601,15 +629,15 @@ class Mesure2D:
         Raises
         ------
         TypeError
-            DESCRIPTION.
+            The provided name for the plot file is not a string.
 
         Returns
         -------
         None.
 
         """
-        result = self.kernel(dom, dev=dev) # Really fast if you have 
-                                            # CUDA enabled
+        result = self.kernel(dom, dev=dev)  # Really fast if you have
+        # CUDA enabled
         if dev != 'cpu':
             result = result.to('cpu')
         if title is None:
@@ -632,7 +660,7 @@ class Mesure2D:
             plt.colorbar()
             plt.show()
             plt.savefig(title, format='pdf', dpi=1000,
-                    bbox_inches='tight', pad_inches=0.03)
+                        bbox_inches='tight', pad_inches=0.03)
         else:
             plt.imsave(title, result, cmap='hot', vmax=13)
             print(f"[+] Measure saved")
@@ -640,14 +668,17 @@ class Mesure2D:
 
     def show(self, dom, acquis):
         """
-        HIERHER: write it
+        Plot the Dirac measure as points with the acquisition in the 
+        background.
 
         Parameters
         ----------
-        dom : TYPE
-            DESCRIPTION.
-        acquis : TYPE
-            DESCRIPTION.
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
+        acquis: Tensor
+            Vector of the observation, will be compared with the action of the
+            operator on the measure :math:`m`.
 
         Returns
         -------
@@ -666,36 +697,37 @@ class Mesure2D:
 
     def energie(self, dom, acquis, regul, obj='covar', bruits='gauss'):
         r"""
-        Énergie de la mesure pour le problème Covenant
-        :math:`(\mathcal{Q}_\lambda (y))` ou BLASSO sur
-        l'acquisition moyenne :math:`(\mathcal{P}_\lambda (\overline{y}))`.
+        Energy of the measure for the Covenant problem
+        :math:`(\mathcal{Q}_\lambda (y))` or BLASSO on
+        the average acquisition :math:`(\mathcal{P}_\lambda (\overline{y}))`.
 
         Parameters
         ----------
-        dom : Domain2D
-            Domaine sur lequel va être calculée l'acquisition de :math:`m` dans
-            :math:`\mathrm{L}^2(\mathcal{X})`.
-        acquis : Tensor
-            Vecteur de l'observation, pour comparer à l'action de l'opérateur
-            adéquat sur la mesure :math:`m`.
+        dom: :py:class:`covenant.Domain2D`
+            Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+            of :math:`m` lives.
+        acquis: Tensor
+            Vector of the observation, will be compared with the action of the
+            operator on the measure :math:`m`.
         regul : double, optional
-            Paramètre de régularisation `\lambda`.
+            Regularisation parameter `\lambda`.
         obj : str, optional
-            Soit 'covar' pour reconstruire sur la covariance soit 'acquis'
-            pour reconstruire sur la moyenne. The default is 'covar'.
-        bruits : str, optional
-            L'objet contient toutes les valeurs définissant le bruit à simuler.
+            Either 'covar' to reconstruct wrt covariance either 'acquis'
+            to recostruct wrt to the temporal mean. The default is 'covar'.
+        bruits: str, optional
+            The object contains all the values defining the noise to be 
+            simulated.
 
 
         Raises
         ------
         NameError
-            Le noyau n'est pas reconnu par la fonction.
+            The kernel is not recognised by the function.
 
         Returns
         -------
         double
-            Évaluation de l'énergie :math:`T_\lambda` pour la mesure :math:`m`.
+            Evaluation of :math:`T_\lambda` energy for :math:`m` measurement.
 
         """
         # normalis = torch.numel(acquis)
@@ -728,7 +760,7 @@ class Mesure2D:
 
     def save(self, path='saved_objects/measure.pt'):
         """
-        Save the measure in the given file
+        Save the measure in the given `path` file
 
         Parameters
         ----------
@@ -746,19 +778,19 @@ class Mesure2D:
 
     def prune(self, tol=1e-4):
         r"""
-        Retire les :math:`\delta`-pics avec une très faible amplitude (qui
-        s'interpète comme des artefacts numériques).
+        Discard the :math:`\delta`-peaks of very low amplitudes 
+        (can be understood as numerical artifacts).
 
         Parameters
         ----------
         tol : double, optional
-            Tolérance en-dessous de laquelle les mesures de Dirac
-            ne sont pas conservées. The default is 1e-3.
+            Tolerance below which Dirac measures are not kept. The default is 
+            1e-3.
 
         Returns
         -------
         m : Mesure2D
-            Mesure discrète sans les :math:`\delta`-pics de faibles amplitudes.
+            Discrete measures without the low-amplitudes :math:`\delta`-peaks.
 
 
         """
@@ -818,20 +850,20 @@ class Mesure2D:
 
 def mesure_aleatoire(N, dom):
     r"""
-    Créé une mesure aléatoire de N :math:`\delta`-pics d'amplitudes aléatoires
-    comprises entre 0,5 et 1,5.
+    Created a random measure of N :math:`\delta`-peaks with random amplitudes
+    between 0.5 and 1.5.
 
     Parameters
     ----------
     N : int
-        Nombre de :math:`\delta`-pics à mettre dans la mesure discrète.
-    dom : Domaine2D
-        Domaine où les :math:`\delta`-pics vont être disposés.
+        Number of :math:`\delta`-peaks to put in the discrete measure.
+    dom : Domain2D
+        Domain where the :math:`\delta`-peaks will be put.
 
     Returns
     -------
     m : :class:`Mesure2D`
-        Mesure discrète composée de N :math:`\delta`-pics distincts.
+        Discrete measure composed of N distinct :math:`\delta`-peaks.
 
     """
     x = dom.x_gauche + torch.rand(N, 2) * (dom.x_droit - dom.x_gauche)
@@ -841,30 +873,31 @@ def mesure_aleatoire(N, dom):
 
 def phi(m, dom, obj='covar'):
     r"""
-    Calcule le résultat d'un opérateur d'acquisition à partir de la mesure m
+    Compute the output of an acquisition operator with measure :math:`m` as 
+    an input
 
     Parameters
     ----------
     m : Mesure2D
-        Mesure discrète sur :math:`\mathcal{X}`.
+        Discrete measure on :math:`\mathcal{X}`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être calculée l'acquisition
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
-        la covariance.
+        Domain :math:`\mathcal{X}` on which the acquisition of :math:`m` 
+        is computed in :math:`\mathrm{L}^2(\mathcal{X})` if the objective is 
+        acquisition or :math:`\mathrm{L}^2(\mathcal{X^2})` if the objective is
+        covariance.
     obj : str, optional
-        Donne l'objectif de l'opérateur. The default is 'covar'.
+        Provide the objective of the operator. The default is 'covar'.
 
     Raises
     ------
     TypeError
-        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+        The operator's objective (or rather its kernel) is not recognised.
 
     Returns
     -------
     Tensor
-        Renvoie :math:`\Phi(m)` si l'objectif est l'acquisition, et
-        :math:`\Lambda(m)` si l'objectif est la covariance.
+        Returns :math:`\Phi(m)` if the objective is acquisition, and
+        :math:`\Lambda(m)` if the objective is covariance.
 
     """
     if obj == 'covar':
@@ -950,17 +983,17 @@ def phiAdjoint(acquis, dom, obj='covar'):
         (X_big, Y_big) = dom.big()
         h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
         h_vec2 = torch.pow(h_vec, 2)
-        h_ker = h_vec2.reshape(1, 1, N_ech*2-1 , N_ech*2-1)
+        h_ker = h_vec2.reshape(1, 1, N_ech*2-1, N_ech*2-1)
         diacquis = torch.diag(torch.abs(acquis)).reshape(N_ech, N_ech)
-        y_arr = diacquis.reshape(1, 1, N_ech , N_ech)
+        y_arr = diacquis.reshape(1, 1, N_ech, N_ech)
         eta = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
         eta = torch.flip(torch.squeeze(eta), [1, 0])
         return eta
     if obj == 'acquis':
         (X_big, Y_big) = dom.big()
         h_vec = gaussienne_2D(X_big, Y_big, sigma, undivide=__normalis_PSF__)
-        h_ker = h_vec.reshape(1, 1, N_ech*2-1 , N_ech*2-1)
-        y_arr = acquis.reshape(1, 1, N_ech , N_ech)
+        h_ker = h_vec.reshape(1, 1, N_ech*2-1, N_ech*2-1)
+        y_arr = acquis.reshape(1, 1, N_ech, N_ech)
         eta = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
         eta = torch.flip(torch.squeeze(eta), [1, 0])
         return eta
@@ -1061,13 +1094,13 @@ def gradPhiAdjointSimps(acquis, mes_pos, dom, obj='acquis', noyau='gaussien',
     if noyau == 'gaussien':
         for i in range(len(mes_pos)):
             x = mes_pos[i]
-            gauss_x = grad_x_gaussienne_2D(x[0] - dom.X, 
-                                           x[1] - dom.Y, 
+            gauss_x = grad_x_gaussienne_2D(x[0] - dom.X,
+                                           x[1] - dom.Y,
                                            x[0] - dom.X, dom.sigma)
             integ_x = torch.trapz(acquis * gauss_x, dom.X_grid)
             eta[i, 0] = torch.trapz(integ_x, dom.X_grid)
-            gauss_y = grad_y_gaussienne_2D(x[0] - dom.X, 
-                                           x[1] - dom.Y, 
+            gauss_y = grad_y_gaussienne_2D(x[0] - dom.X,
+                                           x[1] - dom.Y,
                                            x[1] - dom.Y, dom.sigma)
             integ_y = torch.trapz(acquis * gauss_y, dom.X_grid)
             eta[i, 1] = torch.trapz(integ_y, dom.X_grid)
@@ -1198,7 +1231,6 @@ def grad_etaλk(mesure, acquis, dom, regul, obj='acquis', noyau='gaussien'):
         raise TypeError("Unkwnon kernel provided")
 
 
-
 def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
     r"""Construit une pile d'acquisition à partir d'une mesure. Correspond à
     l'opérateur $\vartheta(\mu)$
@@ -1264,7 +1296,7 @@ def covariance_pile(stack):
 
     """
     stack = stack.float()
-    stack_re = stack.reshape(stack.shape[0],-1)
+    stack_re = stack.reshape(stack.shape[0], -1)
     stack_re -= stack_re.mean(0, keepdim=True)
     return 1/(stack_re.shape[0]-1) * stack_re.T @ stack_re
 
@@ -1386,7 +1418,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         certif_abs = torch.abs(eta_V_k)
         x_star_index = unravel_index(certif_abs.argmax(), eta_V_k.shape)
         x_star_tuple = tuple(s / N_ech_y for s in x_star_index)
-        x_star = torch.tensor(x_star_tuple).reshape(1,2).to(dev)
+        x_star = torch.tensor(x_star_tuple).reshape(1, 2).to(dev)
         if printInline:
             print(fr'* x^* index {x_star_tuple} max ' +
                   fr'à {certif_abs[x_star_index]:.3e}')
@@ -1432,7 +1464,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
             optimizer.step(closure)
 
-        a_k_demi = a_param.detach().clone() # pour ne pas copier l'arbre
+        a_k_demi = a_param.detach().clone()  # pour ne pas copier l'arbre
         del a_param, optimizer, mse_loss
 
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
@@ -1495,7 +1527,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         try:
             if (N_vecteur[-1] == N_vecteur[-2]
                 and N_vecteur[-1] == N_vecteur[-3]
-                and N_vecteur[-1] == N_vecteur[-4]):
+                    and N_vecteur[-1] == N_vecteur[-4]):
                 if printInline:
                     print('\n[!] Algorithme a optimisé')
                     print("\n\n---- Fin de la boucle ----")
@@ -1505,7 +1537,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         except IndexError:
             pass
         N_vecteur = np.append(N_vecteur, Nk)
-        # del (a_k_plus, x_k_plus, optimizer, mse_loss, x_k_demi, a_k_demi, 
+        # del (a_k_plus, x_k_plus, optimizer, mse_loss, x_k_demi, a_k_demi,
         #      a_param)
         # torch.cuda.empty_cache()
 
@@ -1549,7 +1581,7 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
         Vecteur des positions solution de l'étape 8 du SFW.
 
     """
-    
+
     Nk = len(a_k_demi)
     param = torch.cat((a_k_demi, x_k_demi.reshape(-1)))
     param.requires_grad = True
@@ -1580,7 +1612,7 @@ def non_convex_step(acquis, dom, regul, a_k_demi, x_k_demi, obj='covar'):
     return (Mesure2D(a_k_plus, x_k_plus))
 
 
-def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5, 
+def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
                        nIter=80, obj='covar', printInline=True):
     """
     Hierher: implement CUDA support
@@ -1639,7 +1671,7 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
                                        printInline=True)
             if obj == 'acquis':
                 y_bar_tmp = pile_moy_tmp.float()
-                (m_tmp, nrj_tmp) = SFW(y_bar_tmp - y_bar_tmp.min(), 
+                (m_tmp, nrj_tmp) = SFW(y_bar_tmp - y_bar_tmp.min(),
                                        domain,
                                        regul=regul,
                                        nIter=nIter,
@@ -1652,7 +1684,7 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
             x_redress = (m_tmp.x[:, 0]*quadrant_size
                          + x_ht_gche)/GLOBAL_N_ECH
             y_redress = (m_tmp.x[:, 1]*quadrant_size
-                          + x_bas_gche)/GLOBAL_N_ECH
+                         + x_bas_gche)/GLOBAL_N_ECH
             pos = torch.tensor((list(zip(x_redress, y_redress))))
             m_rajout = Mesure2D(m_tmp.a, pos)
             m_tot += m_rajout
@@ -1833,7 +1865,6 @@ def cost_matrix_wasserstein(mes, m_zer, p_wasser=1):
         M = ot.dist(mes.x, m_zer.x)
         return M
     raise ValueError('Unknown p for W_p computation')
-
 
 
 def SNR(signal, acquisition):
@@ -2220,9 +2251,9 @@ def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
             ax2.legend(loc=1, fontsize=20)
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
-        if obj =='covar':
+        if obj == 'covar':
             ax2.set_title(f'$\Lambda(m_{{M,x}})$ at iterate {k}', fontsize=35)
-        elif obj =='acquis':
+        elif obj == 'acquis':
             ax2.set_title(f'$\Phi(m_{{a,x}})$ at iterate {k}', fontsize=35)
         else:
             raise TypeError("Unknown model objective")
@@ -2346,40 +2377,38 @@ if __name__ == 'main':
     X_GAUCHE = 0
     X_DROIT = 1
     # SIGMA = 1e-1
-    SIGMA = 3 # en fait c'est la freq de coupure HIERHER à corriger
+    SIGMA = 3  # en fait c'est la freq de coupure HIERHER à corriger
     domain = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA, dev=device)
     domain_cpu = Domain2D(X_GAUCHE, X_DROIT, N_ECH, SIGMA)
-    
-    a = torch.Tensor([1,2])
+
+    a = torch.Tensor([1, 2])
     x = torch.Tensor([[0.1, 0.5], [0.7, 0.2]])
     x2 = torch.Tensor([[0.3, 0.4], [0.5, 0.5]])
-    
+
     a = torch.tensor([8, 10, 6, 7, 9])
     x = torch.tensor([[0.2, 0.23], [0.90, 0.95],
                       [0.33, 0.82], [0.33, 0.30],
                       [0.23, 0.38]])
-    
+
     m = Mesure2D(a, x, dev=device)
     m_cpu = Mesure2D(a, x, dev='cpu')
     # m2 = Mesure2D(a, x2)
-    
+
     # plt.figure()
     # plt.imshow(m.kernel(domain).to('cpu'), extent=[0,1,1,0])
     # plt.title('$\Phi(m)$', fontsize=28)
     # plt.colorbar()
-    
+
     # plt.figure()
     # plt.imshow(m.cov_kernel(domain).to('cpu'), extent=[0,1,1,0])
     # plt.colorbar()
     # plt.title('$\Lambda(m)$', fontsize=28)
-    
-    
+
     FOND = 5e-2
     SIGMA_BRUITS = 1e-2
     TYPE_BRUITS = 'gauss'
     bruits_t = Bruits(FOND, SIGMA_BRUITS, TYPE_BRUITS)
-    
-    
+
     T_ECH = 500
     pile = pile_aquisition(m, domain, bruits_t, T_ECH, dev=device)
     pile = pile / torch.max(pile)
@@ -2387,49 +2416,42 @@ if __name__ == 'main':
     y_bar_cpu = y_bar.to('cpu')
     cov_pile = covariance_pile(pile)
     R_y = cov_pile
-    
+
     # plt.figure()
     # plt.scatter(x[:,0], x[:,1])
     # plt.imshow(cov_pile)
     # plt.colorbar()
     # plt.title('$R_y$', fontsize=28)
-    
-    
+
     lambda_cov = 1e-6
     lambda_moy = 1e-5
     iteration = m.N
-    
+
     (m_cov, nrj_cov, mes_cov) = SFW(R_y, domain, regul=lambda_cov,
-                                              nIter=iteration, mesParIter=True,
-                                              obj='covar', printInline=True)
-    
-    (m_moy, nrj_moy, mes_moy) = SFW(y_bar , domain,
+                                    nIter=iteration, mesParIter=True,
+                                    obj='covar', printInline=True)
+
+    (m_moy, nrj_moy, mes_moy) = SFW(y_bar, domain,
                                     regul=lambda_moy,
                                     nIter=iteration, mesParIter=True,
                                     obj='acquis', printInline=True)
-    
 
-    
     print(f'm_cov : {m_cov.N} δ-pics')
     print(f'm_moy : {m_moy.N} δ-pics')
     # print(m_moy)
-    
-    
+
     if m_cov.N > 0:
         certificat_V_cov = etak(m_cov, R_y, domain, lambda_cov,
                                 obj='covar').to('cpu')
         m_cov.to('cpu')
         plot_results(m_cov, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_cov,
-                      certificat_V_cov, obj='covar')
+                     certificat_V_cov, obj='covar')
     if m_moy.N > 0:
         certificat_V_moy = etak(m_moy, y_bar, domain, lambda_moy,
                                 obj='acquis').to('cpu')
         m_moy.to('cpu')
         plot_results(m_moy, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_moy,
-                      certificat_V_moy, obj='acquis')
-
-
-
+                     certificat_V_moy, obj='acquis')
 
 
 # # Calcul certificat P_\lambda
@@ -2471,9 +2493,6 @@ if __name__ == 'main':
 # plt.title('$\eta_\lambda^{\mathcal{Q}}$', fontsize=28)
 
 
-
-
-
 # #%% Etape 7
 
 
@@ -2507,7 +2526,6 @@ if __name__ == 'main':
 #     optimizer.step(closure)
 
 # print(a_param)
-
 
 
 # #%% Etape 8
@@ -2567,7 +2585,7 @@ if __name__ == 'main':
 # plt.imshow(cov_pile.to('cpu') - phi(m_cpu, domain_cpu));plt.colorbar()
 
 # plt.figure()
-# plt.imshow(phiAdjoint(cov_pile.to('cpu') - phi(m_cpu, domain_cpu), 
+# plt.imshow(phiAdjoint(cov_pile.to('cpu') - phi(m_cpu, domain_cpu),
 #                       domain_cpu))
 # plt.colorbar()
 
@@ -2575,4 +2593,4 @@ if __name__ == 'main':
 # Biblio
 # http://sagecal.sourceforge.net/pytorch/index.html
 # LazyTensor https://www.kernel-operations.io/keops/_auto_tutorials/a_LazyTensors/plot_lazytensors_a.html
-# 
+#
