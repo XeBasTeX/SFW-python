@@ -7,7 +7,8 @@ and reconstructing those measures w.r.t to a provided acquistion
 
 Created on Mon Mar 22 08:49:01 2021
 
-@author: Bastien (https://github.com/XeBasTeX)
+@author: Bastien (https://github.com/XeBasTeX, 
+                  https://gitlab.inria.fr/blaville)
 """
 
 
@@ -23,12 +24,13 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
-# import pickle
 
 
-torch.manual_seed(90)
+#If you want to set the noise seed
+# torch.manual_seed(90)
 
-# GPU acceleration if needed
+
+# GPU acceleration if needed, enable by default
 device = "cuda" if torch.cuda.is_available() else "cpu"
 # device = "cpu"
 print("[Cudavenant] Using {} device".format(device))
@@ -374,13 +376,11 @@ class Mesure2D:
             self.a = torch.tensor(amplitude).to(dev)
             self.x = torch.tensor(position).to(dev)
         else:
-            raise TypeError("Gros chien de la casse formate ta bouse")
+            raise TypeError("Please check the format of your input")
         self.N = len(amplitude)
 
 
     def __add__(self, m):
-        '''Hieher : il faut encore régler l'addition pour les mesures au même
-        position, ça vaudrait le coup de virer les duplicats'''
         a_new = torch.cat((self.a, m.a))
         x_new = torch.cat((self.x, m.x))
         return Mesure2D(a_new, x_new, dev=device)
@@ -528,7 +528,8 @@ class Mesure2D:
             Format of the square matrix of noises. Hierher to be expanded on
             domains in rectangle.
         bru: Noises
-            The object contains all the values defining the noise to be simulated.
+            The object contains all the values defining the noise to 
+            be simulated.
 
         Raises
         ------
@@ -555,8 +556,8 @@ class Mesure2D:
             acquis = simul + w + fond
             return acquis
         if type_de_bruits == 'poisson':
-            w = nv*torch.poisson(dom.X)
-            simul = w*self.kernel(dom, noyau='gaussienne')
+            w = nv * torch.poisson(dom.X)
+            simul = w * self.kernel(dom, noyau='gaussienne')
             acquis = simul + fond
         raise NameError("Unknown type of noise")
 
@@ -663,7 +664,7 @@ class Mesure2D:
                         bbox_inches='tight', pad_inches=0.03)
         else:
             plt.imsave(title, result, cmap='hot', vmax=13)
-            print(f"[+] Measure saved")
+            print("[+] Measure saved")
 
 
     def show(self, dom, acquis):
@@ -909,33 +910,35 @@ def phi(m, dom, obj='covar'):
 
 def phi_vecteur(a, x, dom, obj='covar'):
     r"""
-    Créer le résultat d'un opérateur d'acquisition à partir des vecteurs
-    a et x qui forme une mesure m_tmp
+    Compute the output image of the forward operator evaluated on the discrete
+    measure :math:`m_{a,x}` with amplitude a and position x as an input.
 
     Parameters
     ----------
     a : array_like
-        Vecteur des luminosités, même nombre d'éléments que :math:`x`.
+        Luminosity vector, ought to have the same number of elements as 
+        :math:`x`.
     x : array_like
-        Vecteur des positions 2D, même nombre d'éléments que :math:`a`.
+        Luminosity vector, ought to have the same number of elements as 
+        :math:`a`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
-        la covariance.
+        Domain :math:`\mathcal{X}` on which the acquisition of :math:`m` 
+        is computed in :math:`\mathrm{L}^2(\mathcal{X})` if the objective is 
+        acquisition or :math:`\mathrm{L}^2(\mathcal{X^2})` if the objective is
+        covariance.
     obj : str, optional
-        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
-        reconstruire sur la moyenne. The default is 'covar'.
+        Provide the objective of the operator. The default is 'covar'.
 
     Raises
     ------
     TypeError
-        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+        The operator's objective (or rather its kernel) is not recognised.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    Tensor
+        Returns :math:`\Phi(m)` if the objective is acquisition, and
+        :math:`\Lambda(m)` if the objective is covariance.
 
     """
     if obj == 'covar':
@@ -949,32 +952,31 @@ def phi_vecteur(a, x, dom, obj='covar'):
 
 def phiAdjoint(acquis, dom, obj='covar'):
     r"""
-    Hierher débugger ; taille_x et taille_y pas implémenté
+    Compute the adjoint operator.
 
     Parameters
     ----------
     acquis : Tensor
-        Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+        Either the acquisition :math:`y` or the covariance :math:`R_y`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
-        la covariance.
+        Domain :math:`\mathcal{X}` on which the acquisition of :math:`m` 
+        is computed in :math:`\mathrm{L}^2(\mathcal{X})` if the objective is 
+        acquisition or :math:`\mathrm{L}^2(\mathcal{X^2})` if the objective is
+        covariance.
     obj : str, optional
-        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
-        reconstruire sur la moyenne. The default is 'covar'.
+        Provide the objective of the operator. The default is 'covar'.
 
     Raises
     ------
     TypeError
-        L'objectif de l'opérateur (ou son noyau) n'est pas reconnu.
+        The operator's objective (or rather its kernel) is not recognised.
 
     Returns
     -------
     eta : Tensor
-        Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
-        discrétisée. Utile pour calculer la discrétisation du certificat
-        :math:`\eta` associé à une mesure.
+        Continuous function, element of :math:`\mathscr{C}(\mathcal{X})`,
+        discretised. Useful to compute the discretisation of the certificate
+        :math:`\eta` associated to the measure.
 
     """
     N_ech = dom.N_ech
@@ -1112,41 +1114,38 @@ def gradPhiAdjointSimps(acquis, mes_pos, dom, obj='acquis', noyau='gaussien',
 
 
 def etak(mesure, acquis, dom, regul, obj='covar'):
-    r"""Certificat dual :math:`\eta_\lambda` associé à la mesure
-    :math:`m_\lambda`. Ce certificat permet de donner une approximation
-    (sur la grille) de la position du Dirac de plus forte intensité du
-    résidu.
+    r"""Dual certificate :math:`\eta_\lambda` associated to the measure
+    :math:`m_\lambda`. The certificate gives the approximation
+    (on the grid) of the Dirac with strongest intensity of the residual
 
     Parameters
     ----------
     mesure : Mesure2D
-        Mesure discrète :math:`m` dont on veut obtenir le certificat dual.
+        Discrete measure :math:`m`.
     acquis : Tensor
-        Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
+        Either the mean acquisition :math:`y` or the covariance :math:`R_y`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel va être intégré l'adjoint
-        de :math:`m` dans :math:`\mathrm{L}^2(\mathcal{X})` si l'objectif est
-        l'acquisition ou :math:`\mathrm{L}^2(\mathcal{X^2})` si l'objectif est
-        la covariance.
+        Domain :math:`\mathcal{X}` on which one computes the adjoint of the
+        forward operator.
     regul : double
-        Paramètre de régularisation `\lambda`.
+        Regularisation parameter `\lambda`.
     obj : str, optional
-        Soit 'covar' pour reconstruire sur la covariance soit 'acquis' pour
-        reconstruire sur la moyenne. The default is 'covar'.
+        Either 'covar' to reconstruct based on covariance either 'acquis' to
+        reconstruct on the mean. The default is 'acquis'.
 
     Returns
     -------
     eta : Tensor
-        Fonction continue, élément de :math:`\mathscr{C}(\mathcal{X})`,
-        discrétisée. Certificat dual :math:`\eta` associé à la mesure.
+        Continuous function, element of :math:`\mathscr{C}(\mathcal{X})`,
+        discretised. Dual certificate :math:`\eta` associated to `mesure`.
 
     Notes
     -------
-    Si l'objectif est la covariance :
+    If the covariance is the objective:
 
     .. math:: \eta_\mathcal{Q} = \Lambda^\ast(\Lambda m - R_y)
 
-    Si l'objectif est la moyenne :
+    If the covariance is the mean:
 
     .. math:: \eta_\mathcal{P} = \Phi^\ast(\Phi m - \bar{y})
 
@@ -1238,20 +1237,20 @@ def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
     Parameters
     ----------
     m : Mesure2D
-        Mesure discrète sur :math:`\mathcal{X}`.
+        Discrete measure :math:`m`.
     dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
-        ainsi que l'acquisition :math:`y(x,t)` , etc.
+        Domain :math:`\mathcal{X}` on which one computes the adjoint of the
+        forward operator.
     bru : Bruits
-        Contient les paramètres caractérisant le bruit qui pollue les données.
+        Encapsulate the noise parameters.
     T_ech : double
-        Nombre d'images à générer.
+        Number of images of the generated stack.
 
     Returns
     -------
     acquis_temporelle : Tensor
-        Vecteur 3D, la première dimension est celle du temps et les deux autres
-        sont celles de l'espace :math:`\mathcal{X}`.
+        3D Vector, the first dimension is the time and the latter two are the
+        space :math:`\mathcal{X}`.
 
     """
     N_mol = len(m.a)
@@ -1270,26 +1269,26 @@ def pile_aquisition(m, dom, bru, T_ech, dev='cpu'):
 
 
 def covariance_pile(stack):
-    r"""Calcule la covariance de y(x,t) à partir de la pile et de sa moyenne
+    r"""Compute the covariance of y(x,t) from the stack and the mean
 
     Parameters
     ----------
     stack : Tensor
-        Matrice 3D, la première dimension est celle du temps et les deux autres
-        sont celles de l'espace :math:`\mathcal{X}`. Aussi noté :math:`y(x,t)`.
+        3D Vector, the first dimension is the time and the latter two are the
+        space :math:`\mathcal{X}`.
 
     Returns
     -------
     R_y : Tensor
-        Matrice de covariance de la pile d'acquisition.
+        Covariance matrix of the acquisition stack
 
     Notes
     -------
-    La moyenne est donnée par :math:`x \in \mathcal{X}` :
+    The mean is computed through :math:`x \in \mathcal{X}` :
 
     .. math:: \overline{y}(x) = \int_0^T y(x,t) \,\mathrm{d}t.
 
-    La covariance est donnée par :math:`u,v \in \mathcal{X}` :
+    The covariance is computed through :math:`u,v \in \mathcal{X}` :
 
     .. math:: R_y(u,v) = \int_0^T (y(u,t) - \overline{y}(u))(y(v,t) -
                                             \overline{y}(v))\,\mathrm{d}t.
@@ -1329,16 +1328,16 @@ def unravel_index(indices, shape):
 # Le fameux algo de Sliding Frank Wolfe
 def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         obj='covar', dev=device, printInline=True):
-    r"""Algorithme de Sliding Frank-Wolfe pour la reconstruction de mesures
-    solution du BLASSO [1].
+    r"""Sliding Frank-Wolfe algorithm for BLASSO [1] minimisation, hence
+    measure reconstruction.
 
-    Si l'objectif est la covariance :
+    If the aim is the covariance:
 
     .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {T}_\lambda(m) =
         \lambda |m|(\mathcal{X}) + \dfrac{1}{2} ||R_y - \Lambda (m)||^2_2.
             \quad (\mathcal{Q}_\lambda (y))
 
-    Si l'objectif est la moyenne :
+    If the aim is the classic forward operator/ the mean:
 
     .. math:: \mathrm{argmin}_{m \in \mathcal{M(X)}} {S}_\lambda(m) =
         \lambda |m|(\mathcal{X}) +
@@ -1346,45 +1345,46 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
                 \quad (\mathcal{P}_\lambda (\overline{y}))
 
 
-    Paramètres
+    Parameters
     ----------
-    acquis : ndarray
-            Soit l'acquisition moyenne :math:`y` soit la covariance :math:`R_y`.
-    dom : Domain2D
-        Domaine :math:`\mathcal{X}` sur lequel est défini :math:`m_{a,x}`
-        ainsi que l'acquisition :math:`y(x,t)` , etc.
+    acquis: Tensor
+        Vector of the observation, will be compared with the action of the
+        operator on the measure :math:`m`.
+    dom: :py:class:`covenant.Domain2D`
+        Domain where the acquisition in :math:`\mathrm{L}^2(\mathcal{X})` 
+        of :math:`m` lives.
     regul : double, optional
-        Paramètre de régularisation :math:`\lambda`. The default is 1e-5.
+        Regularisation parameter `\lambda`. The default is 1e-5.
     nIter : int, optional
-        Nombre d'itérations maximum pour l'algorithme. The default is 5.
+        Number of iterations. The default is 5.
     mes_init : Mesure2D, optional
-        Mesure pour initialiser l'algorithme. Si None est passé en argument,
-        l'algorithme initialisera avec la mesure nulle. The default is None.
+        Measure to initialise the algorithm. If None is passed,
+        the algorithm initialises with the null measure. The default is None.
     mesParIter : boolean, optional
-        Vontrôle le renvoi ou non du ndarray mes_vecteur qui contient les
-        :math:`k` mesures calculées par SFW. The default is False.
+        If True, returns a ndarray mes_vecteur containing the :math:`k` 
+        measures computed by the SFW. The default is False.
     obj : str, optional
-        Soit `covar` pour reconstruire sur la covariance soit `acquis` pour
-        reconstruire sur la moyenne. The default is 'covar'.
+        Either 'covar' to reconstruct wrt covariance either 'acquis'
+        to recostruct wrt to the temporal mean. The default is 'covar'.
     printInline : str, optional
         Ouput the log of the optimizer. The default is True.
 
     Sorties
     -------
     mesure_k : Mesure2D
-            Dernière mesure reconstruite par SFW.
+            Last measure reconstructed by SFW.
     nrj_vecteur : ndarray
-                Vecteur qui donne l'énergie :math:`T_\lambda(m^k)`
-                au fil des itérations.
+                Vector of the energy :math:`T_\lambda(m^k)`
+                along the iterations.
     mes_vecteur : ndarray
-                Vecteur des mesures reconstruites au fil des itérations.
+                Vector of the reconstructed measures along the iterations.
 
     Raises
     ------
     TypeError
-        Si l'objectif `obj` n'est pas connu, lève une exception.
+        The aim `obj` is unknown.
 
-    Références
+    References
     ----------
     [1] Quentin Denoyelle, Vincent Duval, Gabriel Peyré, Emmanuel Soubies.
     The Sliding Frank-Wolfe Algorithm and its Application to Super-Resolution
@@ -1413,7 +1413,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
     N_vecteur = [Nk]
     for k in range(nIter):
         if printInline:
-            print('\n' + 'Étape numéro ' + str(k))
+            print('\n' + 'Step number ' + str(k))
         eta_V_k = etak(mesure_k, acquis, dom, regul, obj)
         certif_abs = torch.abs(eta_V_k)
         x_star_index = unravel_index(certif_abs.argmax(), eta_V_k.shape)
@@ -1421,13 +1421,13 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         x_star = torch.tensor(x_star_tuple).reshape(1, 2).to(dev)
         if printInline:
             print(fr'* x^* index {x_star_tuple} max ' +
-                  fr'à {certif_abs[x_star_index]:.3e}')
+                  fr'at {certif_abs[x_star_index]:.3e}')
 
         # Condition d'arrêt (étape 4)
         if torch.abs(eta_V_k[x_star_index]) < 1:
             nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj=obj)
             if printInline:
-                print("\n\n---- Condition d'arrêt ----")
+                print("\n\n---- Stopping condition ----")
             if mesParIter:
                 return(mesure_k, nrj_vecteur[:k], mes_vecteur)
             return(mesure_k, nrj_vecteur[:k])
@@ -1470,7 +1470,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         # print('* x_k_demi : ' + str(np.round(x_k_demi, 2)))
         # print('* a_k_demi : ' + str(np.round(a_k_demi, 2)))
         if printInline:
-            print('* Optim convexe')
+            print('* Optim convex')
         mesure_k_demi += Mesure2D(a_k_demi, x_k_demi)
 
         # On résout double LASSO non-convexe (étape 8)
@@ -1513,12 +1513,12 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
         x_k = mesure_k.x
         Nk = mesure_k.N
         if printInline:
-            print(f'* Optim non-convexe : {Nk} δ-pics')
+            print(f'* Optim non-convex : {Nk} δ-peaks')
 
         # Graphe et énergie
         nrj_vecteur[k] = mesure_k.energie(dom, acquis, regul, obj)
         if printInline:
-            print(f'* Énergie : {nrj_vecteur[k]:.3e}')
+            print(f'* Energy : {nrj_vecteur[k]:.3e}')
         if mesParIter == True:
             mes_vecteur = np.append(mes_vecteur, [mesure_k])
             torch.save(mes_vecteur, 'saved_objects/mes_' + obj + '.pkl')
@@ -1529,8 +1529,8 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
                 and N_vecteur[-1] == N_vecteur[-3]
                     and N_vecteur[-1] == N_vecteur[-4]):
                 if printInline:
-                    print('\n[!] Algorithme a optimisé')
-                    print("\n\n---- Fin de la boucle ----")
+                    print('\n[!] Algorithm has optimised')
+                    print("\n\n---- End of loop ----")
                 if mesParIter:
                     return(mesure_k, nrj_vecteur[:k], mes_vecteur)
                 return(mesure_k, nrj_vecteur)
@@ -1543,7 +1543,7 @@ def SFW(acquis, dom, regul=1e-5, nIter=5, mes_init=None, mesParIter=False,
 
     # Fin des itérations
     if printInline:
-        print("\n\n---- Fin de la boucle ----")
+        print("\n\n---- End of loop ----")
     if mesParIter:
         return(mesure_k, nrj_vecteur, mes_vecteur)
     return(mesure_k, nrj_vecteur)
@@ -1679,7 +1679,7 @@ def divide_and_conquer(stack, dom, quadrant_size=32, regul=1e-5,
                                        printInline=False)
 
             print(f'* quadrant ({i},{j}) = [{x_ht_gche},{x_ht_droit}] x ' +
-                  f'[{x_bas_gche},{x_bas_droite}] : {m_tmp.N} δ-peaks')
+                  f'[{x_bas_gche},{x_bas_droite}]: {m_tmp.N} δ-peaks')
 
             x_redress = (m_tmp.x[:, 0]*quadrant_size
                          + x_ht_gche)/GLOBAL_N_ECH
@@ -1794,9 +1794,8 @@ def CPGD(acquis, dom, λ=1, α=1e-2, β=1e-2, nIter=20, nParticles=5,
 
 def wasserstein_metric(mes, m_zer, p_wasser=1):
     """
-    Retourne la :math:`p`-distance de Wasserstein partiel (Partial Gromov-
-    Wasserstein) pour des poids égaux (pas de prise en compte de la
-    luminosité)
+    Output the :math:`p` Wasserstein partial distance (Partial Gromov-
+    Wasserstein) with equal measses (luminosity is not accounted for)
 
     Parameters
     ----------
@@ -1930,7 +1929,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
             plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'with N = {m.N}', fontsize=20)
         elif obj == 'acquis':
             plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
                       f'with N = {m.N}', fontsize=20)
@@ -1948,7 +1947,7 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
         plt.subplot(224)
         plt.plot(nrj, 'o--', color='black', linewidth=2.5)
         plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
-        plt.xlabel('Itération', fontsize=18)
+        plt.xlabel('Iteration', fontsize=18)
         plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
         if obj == 'covar':
             plt.title(r'BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
@@ -1970,8 +1969,8 @@ def plot_results(m, m_zer, dom, bruits, y, nrj, certif, q=4, title=None,
 
 def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
                       saveFig=False, obj='covar'):
-    '''Affiche tous les graphes importants pour la mesure m sans connaissance
-    de la mesure vérité-terrain.'''
+    '''Plot all the important graphes, if one does not know the source 
+    measure'''
     if m.a.numel() > 0:
         fig = plt.figure(figsize=(15, 12))
         fig.suptitle(f'Reconstruction {obj}', fontsize=22)
@@ -2000,10 +1999,10 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
             plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'with N = {m.N}', fontsize=20)
         elif obj == 'acquis':
             plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'with N = {m.N}', fontsize=20)
         plt.colorbar()
 
         plt.subplot(223)
@@ -2018,7 +2017,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
         plt.subplot(224)
         plt.plot(nrj, 'o--', color='black', linewidth=2.5)
         plt.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
-        plt.xlabel('Itération', fontsize=18)
+        plt.xlabel('Iteration', fontsize=18)
         plt.ylabel(r'$T_\lambda(m)$', fontsize=20)
         if obj == 'covar':
             plt.title(r'BLASSO energy $\mathcal{Q}_\lambda(y)$', fontsize=20)
@@ -2040,7 +2039,7 @@ def plot_experimental(m, dom, acquis, nrj, certif, q=4, title=None,
 
 def plot_reconstruction(m, dom, acquis, q=4, title=None, saveFig=False,
                         obj='covar'):
-    '''Affiche que 2 graphes importants pour la mesure m'''
+    '''Only plotn acquisition and reconstruction'''
     if m.a.numel() > 0:
         fig = plt.figure(figsize=(15, 6))
         fig.suptitle(f'Reconstruction {obj}', fontsize=22)
@@ -2068,10 +2067,10 @@ def plot_reconstruction(m, dom, acquis, q=4, title=None, saveFig=False,
         plt.ylabel('Y', fontsize=18)
         if obj == 'covar':
             plt.title(r'Reconstruction $\Lambda(m_{M,x})$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'with N = {m.N}', fontsize=20)
         elif obj == 'acquis':
             plt.title(r'Reconstruction $\Phi(m_{a,x})$ ' +
-                      f'à N = {m.N}', fontsize=20)
+                      f'with N = {m.N}', fontsize=20)
         plt.colorbar()
         if title is None:
             title = 'fig/experimentals.pdf'
@@ -2085,7 +2084,6 @@ def plot_reconstruction(m, dom, acquis, q=4, title=None, saveFig=False,
 
 
 def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
-    '''Hierher à terminer de débogger'''
     # ax, fig = plt.subplots(figsize=(10,10))
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
@@ -2134,7 +2132,8 @@ def gif_pile(pile_acquis, m_zer, y_moy, dom, video='gif', title=None):
 
 def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif',
                 title=None):
-    '''Montre comment la fonction SFW ajoute ses Dirac'''
+    '''Plot the gif on the reconstruction along the iterations
+    GT measure is known'''
     fig = plt.figure(figsize=(20, 10))
 
     ax1 = fig.add_subplot(121)
@@ -2175,7 +2174,7 @@ def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif',
                     s=8*dom.N_ech, c='g', label='Recovered spikes')
         ax2.set_xlabel('X', fontsize=25)
         ax2.set_ylabel('Y', fontsize=25)
-        ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
+        ax2.set_title(f'Reconstruction iteration = {k}', fontsize=35)
         ax2.legend(loc=1, fontsize=20)
         plt.tight_layout()
 
@@ -2202,7 +2201,8 @@ def gif_results(acquis, m_zer, m_list, dom, step=1000, video='gif',
 
 def gif_experimental(acquis, m_list, dom, step=100, cross=True, video='gif',
                      title=None, obj='covar'):
-    '''Montre comment la fonction SFW ajoute ses Dirac'''
+    '''Plot the gif on the reconstruction along the iterations
+    GT measure is unknown'''
     fig = plt.figure(figsize=(20, 10))
 
     ax1 = fig.add_subplot(121)
@@ -2301,6 +2301,8 @@ def trace_ground_truth(m_ax0, reduc=2, saveFig=True):
     plt.title('Ground-truth position of ẟ-peaks', fontsize=20)
     plt.xlabel('x', fontsize=20)
     plt.ylabel('y', fontsize=20)
+    plt.scatter(m_ax0.x[:, 0], m_ax0.x[:, 1], marker='+', c='orange',
+                label='Spikes', s=m_ax0.a)
     if saveFig:
         plt.savefig('fig/gt.pdf', format='pdf', dpi=1000,
                     bbox_inches='tight', pad_inches=0.03)
@@ -2372,6 +2374,7 @@ def cpgd_anim(acquis, mes_zer, m_itere, theta_itere, dom, video='gif',
     return fig
 
 
+# If one want to test the 
 if __name__ == 'main':
     N_ECH = 32
     X_GAUCHE = 0
@@ -2453,144 +2456,3 @@ if __name__ == 'main':
         plot_results(m_moy, m_cpu, domain_cpu, bruits_t, y_bar_cpu, nrj_moy,
                      certificat_V_moy, obj='acquis')
 
-
-# # Calcul certificat P_\lambda
-# (X_big, Y_big) = domain.big()
-# h_vec = gaussienne_2D(X_big, Y_big, SIGMA, undivide=__normalis_PSF__)
-# h_ker = h_vec.reshape(1, 1, N_ECH*2-1 , N_ECH*2-1)
-# y_arr = y_bar.reshape(1, 1, N_ECH , N_ECH)
-# etas = torch.nn.functional.conv2d(h_ker, y_arr, stride=1)
-# etap = torch.flip(torch.squeeze(etas), [0, 1])
-
-# plt.figure()
-# plt.imshow(etap, extent=[0,1,1,0])
-# plt.colorbar()
-# plt.title('$\eta_\lambda^{\mathcal{P}}$', fontsize=28)
-
-
-# # # Calcul certificat Q_\lambda
-# # (X_big, Y_big) = domain.biggy()
-# # h_vec = gaussienne_2D(X_big, Y_big, SIGMA,
-# #                       undivide=__normalis_PSF__).reshape(-1).cuda()
-# # lambda_vec = torch.outer(h_vec, h_vec)[:-1,:-1]
-# # h_ker = lambda_vec.reshape(1, 1, 4*N_ECH**2 -1 , 4*N_ECH**2-1)
-# # R_y_arr = cov_pile.reshape(1, 1, N_ECH**2 , N_ECH**2).cuda()
-# # eta = torch.nn.functional.conv2d(h_ker, R_y_arr, stride=1)
-# # eta = torch.diagonal(torch.squeeze(eta)).cpu()
-# # plt.imshow(eta.reshape(N_ECH, N_ECH))
-
-
-# (Xt, Yt) = domain.reverse()
-# h_vec = gaussienne_2D(Xt, Yt, SIGMA, undivide=__normalis_PSF__).reshape(-1)
-# lambda_vec = torch.outer(h_vec, h_vec)
-# R_y_arr = cov_pile
-# eta = R_y_arr
-# output = torch.diag(torch.abs(eta)).reshape(N_ECH, N_ECH)
-
-# plt.figure()
-# plt.imshow(output, extent=[0,1,1,0])
-# plt.colorbar()
-# plt.title('$\eta_\lambda^{\mathcal{Q}}$', fontsize=28)
-
-
-# #%% Etape 7
-
-
-# x_k_demi = torch.tensor([[0.1,0.2], [0.3,0.2]])
-# a_k_demi = torch.tensor([1, 4.56])
-# m_tmp = Mesure2D(a_k_demi, x_k_demi)
-# acquis = m_tmp.kernel(domain)
-# # acquis = m_tmp.cov_kernel(domain)
-
-# N_grille = acquis.numel()
-# regul = 1e-5
-
-
-# a_param = torch.tensor([3,3], dtype=torch.float, requires_grad=True)
-
-# mse_loss = torch.nn.MSELoss(reduction='sum')
-# optimizer = torch.optim.LBFGS([a_param], lr=1)
-# alpha = regul
-# n_epoch = 10
-
-# for epoch in range(n_epoch):
-#     def closure():
-#         optimizer.zero_grad()
-#         outputs = phi_vecteur(a_param, x_k_demi, domain, obj='acquis')
-#         loss = 0.5 * mse_loss(acquis, outputs)
-
-#         loss += alpha * a_param.abs().sum()
-#         loss.backward()
-#         return loss
-
-#     optimizer.step(closure)
-
-# print(a_param)
-
-
-# #%% Etape 8
-
-# a_k_demi = torch.tensor([1])
-# x_k_demi = torch.tensor([[0.1,0.2]])
-
-# m_tmp = Mesure2D(a_k_demi, x_k_demi)
-# acquis = m_tmp.kernel(domain)
-# acquis = m_tmp.cov_kernel(domain)
-
-
-# N_grille = acquis.numel()
-# regul = 1e-5
-
-
-# a_param = torch.tensor([1.3], dtype=torch.float)
-# x_param = torch.tensor([[0.085, 0.21]], dtype=torch.float)
-
-# param = torch.cat((a_param, x_param.reshape(-1)))
-# param.requires_grad = True
-
-# with torch.no_grad():
-#     param[1:] = param[1:].clamp(0, +1)
-
-# mse_loss = torch.nn.MSELoss(reduction='sum')
-# optimizer = torch.optim.Adam([param])
-# alpha = regul
-# n_epoch = 10
-
-# for epoch in range(n_epoch):
-#     def closure():
-#         optimizer.zero_grad()
-#         x_tmp = param[1:].reshape(1,2)
-#         fidelity = phi_vecteur(param[:1], x_tmp, domain, obj='covar')
-#         loss = 0.5 * mse_loss(acquis, fidelity)
-
-#         loss += alpha * param[:1].abs().sum()
-#         loss.backward()
-#         return loss
-
-#     optimizer.step(closure)
-
-# print(param)
-
-# #%%
-
-# plt.figure()
-# plt.subplot(121)
-# plt.imshow(cov_pile.to('cpu'))
-# plt.colorbar()
-# plt.subplot(122)
-# plt.imshow(phi(m_cpu, domain_cpu))
-
-
-# plt.figure()
-# plt.imshow(cov_pile.to('cpu') - phi(m_cpu, domain_cpu));plt.colorbar()
-
-# plt.figure()
-# plt.imshow(phiAdjoint(cov_pile.to('cpu') - phi(m_cpu, domain_cpu),
-#                       domain_cpu))
-# plt.colorbar()
-
-
-# Biblio
-# http://sagecal.sourceforge.net/pytorch/index.html
-# LazyTensor https://www.kernel-operations.io/keops/_auto_tutorials/a_LazyTensors/plot_lazytensors_a.html
-#

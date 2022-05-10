@@ -411,7 +411,7 @@ def plot_results(m):
                      f'et $\sigma_B = {niveau_bruits:.0e}$', fontsize=20)
 
         plt.subplot(221)
-        cont1 = plt.contourf(X, Y, y, 100, cmap='seismic')
+        cont1 = plt.contourf(X, Y, y, 100, cmap='hot')
         for c in cont1.collections:
             c.set_edgecolor("face")
         plt.colorbar();
@@ -426,7 +426,7 @@ def plot_results(m):
         plt.title('Acquisition $y = \Phi m_{a_0,x_0} + w$', fontsize=20)
 
         plt.subplot(222)
-        cont2 = plt.contourf(X, Y, m.kernel(X, Y), 100, cmap='seismic')
+        cont2 = plt.contourf(X, Y, m.kernel(X, Y), 100, cmap='hot')
         for c in cont2.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -436,7 +436,7 @@ def plot_results(m):
 
         plt.subplot(223)
         cont3 = plt.contourf(X, Y, certificat_V, 100,
-                             cmap='seismic')
+                             cmap='hot')
         for c in cont3.collections:
             c.set_edgecolor("face")
         plt.xlabel('X', fontsize=18)
@@ -460,7 +460,7 @@ def gif_results(y, m_ax0, m_sfw, video='gif'):
 
     ax1 = fig.add_subplot(121)
     ax1.set_aspect('equal', adjustable='box')
-    cont = ax1.contourf(X, Y, y, 100, cmap='seismic')
+    cont = ax1.contourf(X, Y, y, 100, cmap='hot')
     divider = make_axes_locatable(ax1) # pour paramétrer colorbar
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont, cax=cax)
@@ -470,11 +470,11 @@ def gif_results(y, m_ax0, m_sfw, video='gif'):
 
     ax2 = fig.add_subplot(122)
     # ax2.set(xlim=(0, 1), ylim=(0, 1))
-    cont_sfw = ax2.contourf(X, Y, y, 100, cmap='seismic')
+    cont_sfw = ax2.contourf(X, Y, y, 100, cmap='hot')
     divider = make_axes_locatable(ax2)
     cax = divider.append_axes("right", size="5%", pad=0.15)
     fig.colorbar(cont_sfw, cax=cax)
-    ax2.contourf(X, Y, y, 100, cmap='seismic')
+    ax2.contourf(X, Y, y, 100, cmap='hot')
     ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
                s=N_ech, label='Hidden spikes')
     ax2.scatter(mes_sfw[0].x[:,0], mes_sfw[0].x[:,1], marker='+',
@@ -490,14 +490,14 @@ def gif_results(y, m_ax0, m_sfw, video='gif'):
             ax2.clear()
             ax2.set_aspect('equal', adjustable='box')
             ax2.contourf(X, Y, mes_sfw[k].kernel(X,Y), 100,
-                                 cmap='seismic')
+                                 cmap='hot')
             ax2.scatter(m_ax0.x[:,0], m_ax0.x[:,1], marker='x',
                    s=N_ech, label='GT spikes')
             ax2.scatter(mes_sfw[k].x[:,0], mes_sfw[k].x[:,1], marker='+',
                           s=2*N_ech, c='g', label='Recovered spikes')
             ax2.set_xlabel('X', fontsize=25)
             ax2.set_ylabel('Y', fontsize=25)
-            ax2.set_title(f'Reconstruction itération = {k}', fontsize=35)
+            ax2.set_title(f'Reconstruction iteration = {k}', fontsize=35)
             ax2.legend(loc=1, fontsize=20)
             plt.tight_layout()
 
@@ -506,9 +506,9 @@ def gif_results(y, m_ax0, m_sfw, video='gif'):
 
     plt.draw()
     if video == "mp4":
-        anim.save('fig/anim-sfw-2d.mp4')
+        anim.save('anim-sfw-2d.mp4')
     elif video == "gif":
-        anim.save('fig/anim-sfw-2d.gif')
+        anim.save('anim-sfw-2d.gif')
     else:
         raise ValueError('Unknown video format')
     return fig
